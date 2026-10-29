@@ -1,5 +1,8 @@
 from datetime import timedelta
 
+from django.conf import settings
+from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.sessions.models import Session
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -16,8 +19,14 @@ def make_user(username, role=User.Role.STUDENT):
 
 
 def signed_in(user):
+    """A client with a session for user, created without logging in (no login signal)."""
+    session = SessionStore()
+    session[SESSION_KEY] = str(user.pk)
+    session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    session.create()
     client = Client()
-    client.force_login(user)
+    client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
     return client
 
 
@@ -97,3 +106,38 @@ class SingleSessionOnLoginTest(TestCase):  # OEP-F-005
         self.assertEqual(site.get(reverse("admin:index")).status_code, 200)
         response = portal.get(reverse("accounts:admin_dashboard"))
         self.assertIn(reverse("accounts:login"), response["Location"])
+
+
+class TCAuth05SingleActiveSessionTest(TestCase):
+    """TC-Auth-05 / AC-005: logging in on a second device logs the first session out."""
+
+    def setUp(self):
+        self.user = make_user("alice")
+
+    def log_in_on_device(self):
+        device = Client()
+        response = device.post(
+            reverse("accounts:login"), {"username": self.user.email, "password": PASSWORD}
+        )
+        self.assertRedirects(response, reverse("accounts:dashboard"), fetch_redirect_response=False)
+        return device
+
+    def assertSentToLogin(self, device):
+        response = device.get(reverse("accounts:student_dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_second_device_login_logs_out_the_first(self):
+        device_1 = self.log_in_on_device()
+        self.assertTrue(is_signed_in(device_1))
+
+        device_2 = self.log_in_on_device()
+        self.assertSentToLogin(device_1)
+        self.assertTrue(is_signed_in(device_2))
+
+    def test_logging_in_again_on_the_first_device_logs_out_the_second(self):
+        self.log_in_on_device()
+        device_2 = self.log_in_on_device()
+        device_1 = self.log_in_on_device()
+        self.assertSentToLogin(device_2)
+        self.assertTrue(is_signed_in(device_1))
