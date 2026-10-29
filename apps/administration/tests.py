@@ -82,6 +82,34 @@ class UserServiceTest(TestCase):  # OEP-F-004
         self.assertTrue(self.student.is_active)
         self.assertEqual(self.student.role, User.Role.STUDENT)
 
+    def test_admin_cannot_deactivate_self(self):
+        with self.assertRaisesMessage(ValidationError, "deactivate your own account"):
+            services.deactivate(self.admin, self.admin)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_admin_cannot_demote_self(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            with self.subTest(role=role):
+                with self.assertRaisesMessage(ValidationError, "own Administrator role"):
+                    services.change_role(self.admin, self.admin, role)
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.role, User.Role.ADMINISTRATOR)
+
+    def test_admin_can_deactivate_and_demote_another_admin(self):
+        other = make_user("admin2", role=User.Role.ADMINISTRATOR)
+        services.change_role(self.admin, other, User.Role.INSTRUCTOR)
+        services.deactivate(self.admin, other)
+        other.refresh_from_db()
+        self.assertEqual(other.role, User.Role.INSTRUCTOR)
+        self.assertFalse(other.is_active)
+
+    @mock.patch.object(services, "audit_hook")
+    def test_refused_change_is_not_audited(self, hook):
+        with self.assertRaises(ValidationError):
+            services.deactivate(self.admin, self.admin)
+        hook.assert_not_called()
+
     @mock.patch.object(services, "audit_hook")
     def test_audit_hook_is_called_for_each_change(self, hook):
         services.deactivate(self.admin, self.student)

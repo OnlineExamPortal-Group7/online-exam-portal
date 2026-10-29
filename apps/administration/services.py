@@ -30,6 +30,8 @@ def create_user(actor, *, username, email, password, role, first_name="", last_n
 
 def deactivate(actor, user):
     _require_administrator(actor)
+    if user.pk == actor.pk:
+        raise ValidationError("You cannot deactivate your own account.")
     user.is_active = False
     user.save(update_fields=["is_active"])
     audit_hook("user_deactivated", actor, user)
@@ -46,6 +48,8 @@ def change_role(actor, user, role):
     _require_administrator(actor)
     if role not in User.Role.values:
         raise ValidationError(f"Unknown role: {role}")
+    if user.pk == actor.pk and role != User.Role.ADMINISTRATOR:
+        raise ValidationError("You cannot remove your own Administrator role.")
     old_role = user.role
     user.role = role
     user.save(update_fields=["role"])
