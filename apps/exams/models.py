@@ -19,6 +19,7 @@ class Question(models.Model):
         related_name="questions",
     )
     text = models.TextField()
+    topic = models.CharField(max_length=100)  # subject/topic tag (OEP-F-010)
     question_type = models.CharField(
         max_length=10,
         choices=QuestionType.choices,

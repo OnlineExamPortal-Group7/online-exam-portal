@@ -179,6 +179,7 @@ class ImportQuestionsTest(TestCase):  # OEP-F-011
         self.assertEqual(question.course, self.course)
         self.assertEqual(question.created_by, self.teacher)
         self.assertEqual(question.difficulty, "hard")
+        self.assertEqual(question.topic, "Loops")
         self.assertEqual(question.marks, 3)
         self.assertEqual([c.text for c in question.choices.all()], ["if", "for", "def"])
         self.assertEqual([c.text for c in question.choices.filter(is_correct=True)], ["for"])

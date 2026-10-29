@@ -27,7 +27,7 @@ IMPORT_ROLES = (User.Role.INSTRUCTOR, User.Role.ADMINISTRATOR)
 MAX_FILE_BYTES = 1024 * 1024
 MAX_ROWS = 500
 MIN_OPTIONS, MAX_OPTIONS = 2, 6
-MAX_TOPIC_LENGTH = 100
+MAX_TOPIC_LENGTH = Question._meta.get_field("topic").max_length
 
 OPTION_COLUMNS = [f"option_{n}" for n in range(1, MAX_OPTIONS + 1)]
 REQUIRED_COLUMNS = ["course", "topic", "difficulty", "question", "option_1", "option_2", "correct"]
@@ -94,10 +94,9 @@ def import_questions(user, data):
 
 
 def _question_fields(parsed):
-    # parsed.topic is validated but not saved yet: Question has no topic field
-    # (OEP-F-010). Add it here once the topic field decision is made.
     return {
         "course": parsed.course,
+        "topic": parsed.topic,
         "text": parsed.text,
         "difficulty": parsed.difficulty,
         "marks": parsed.marks,
@@ -226,7 +225,7 @@ def _parse_row(row_number, row, courses):
 
 
 def _clean_topic(value):
-    """Topic / subject tag (OEP-F-010). Kept separate until the Question model has a topic field."""
+    """Topic / subject tag (OEP-F-010), saved in Question.topic."""
     if not value:
         return value, "topic is empty."
     if len(value) > MAX_TOPIC_LENGTH:
