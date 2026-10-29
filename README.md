@@ -48,6 +48,9 @@ Branch from `main` (`feature/issue-N-short-name`), open a pull request that says
 - Protect views with `@role_required(User.Role.INSTRUCTOR)` or `RoleRequiredMixin`
   (`apps/accounts/permissions.py`). Wrong role gives HTTP 403; anonymous users go to login.
 - Creating an administrator: `python manage.py createsuperuser` (gets the Administrator role).
+- One active session per user (OEP-F-005): logging in on another device or browser signs out
+  the previous session. To sign a user out from code, use `end_sessions(user)` in
+  `apps/accounts/sessions.py`.
 
 ## User administration
 Administrators manage accounts at `/manage/users/` (OEP-F-004):
