@@ -1,4 +1,3 @@
-
 from datetime import timedelta
 
 from django.test import TestCase
@@ -16,12 +15,14 @@ class ExamCreationTests(TestCase):
     def setUpTestData(cls):
         cls.instructor = User.objects.create_user(
             username="instructor1",
+            email="instructor1@example.com",
             password="TestPassword123!",
             role=User.Role.INSTRUCTOR,
         )
 
         cls.student = User.objects.create_user(
             username="student1",
+            email="student1@example.com",
             password="TestPassword123!",
             role=User.Role.STUDENT,
         )
@@ -118,5 +119,7 @@ class ExamCreationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(Exam.objects.filter(title="Invalid Exam").exists())
+        self.assertFalse(
+            Exam.objects.filter(title="Invalid Exam").exists()
+        )
         self.assertIn("end_time", response.context["form"].errors)
