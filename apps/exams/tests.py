@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.administration.models import Course
 
-from .models import Exam, ExamQuestion, Question
+from .models import Exam, Question
 
 
 class ExamCreationTests(TestCase):
