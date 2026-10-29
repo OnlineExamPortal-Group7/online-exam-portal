@@ -48,3 +48,15 @@ Branch from `main` (`feature/issue-N-short-name`), open a pull request that says
 - Protect views with `@role_required(User.Role.INSTRUCTOR)` or `RoleRequiredMixin`
   (`apps/accounts/permissions.py`). Wrong role gives HTTP 403; anonymous users go to login.
 - Creating an administrator: `python manage.py createsuperuser` (gets the Administrator role).
+
+## User administration
+Administrators manage accounts at `/manage/users/` (OEP-F-004):
+- **Create** a user with a role at `/manage/users/new/`.
+- **Deactivate / reactivate** an account. A deactivated user cannot log in.
+- **Change a role.** The user is signed out and gets the new role on their next login.
+- An administrator cannot deactivate their own account or remove their own Administrator role.
+- Every route under `/manage/` returns HTTP 403 for Students and Instructors.
+
+Change users through `apps/administration/services.py` (`create_user`, `deactivate`,
+`reactivate`, `change_role`), not by editing `User` directly, so these rules and the
+audit hook (`audit_hook`, implemented by the audit-log issue #22) always apply.
