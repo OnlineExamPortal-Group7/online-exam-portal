@@ -1,7 +1,8 @@
 """Parse and validate a CSV file of MCQ questions (OEP-F-011, rules from OEP-F-010).
 
-This module only reads the file. It does not touch the database, so every row
-can be checked and reported before anything is saved.
+`parse_questions` only reads the file and never touches the database, so every
+row is checked and reported before anything is saved. `import_questions` then
+saves all questions in one transaction, or none if any row has a problem.
 
 CSV columns (first row is the header, names are case-insensitive):
     course, topic, difficulty, question, option_1 ... option_6, correct, marks
@@ -13,7 +14,15 @@ import csv
 import io
 from dataclasses import dataclass, field
 
-from .models import Question
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
+
+from apps.accounts.models import User
+from apps.administration.models import Course
+
+from .models import Choice, Question
+
+IMPORT_ROLES = (User.Role.INSTRUCTOR, User.Role.ADMINISTRATOR)
 
 MAX_FILE_BYTES = 1024 * 1024
 MAX_ROWS = 500
@@ -50,10 +59,49 @@ class RowError:
 class ParseResult:
     questions: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    created: list = field(default_factory=list)  # saved Question objects
 
     @property
     def is_valid(self):
         return bool(self.questions) and not self.errors
+
+
+def importable_courses(user):
+    """Instructors import into their own active courses; administrators into any active course."""
+    if user.role not in IMPORT_ROLES:
+        raise PermissionDenied
+    courses = Course.objects.filter(is_active=True)
+    if user.role == User.Role.INSTRUCTOR:
+        courses = courses.filter(instructor=user)
+    return courses
+
+
+def import_questions(user, data):
+    """Validate the whole file, then save every question, or none if any row has a problem."""
+    courses = {course.code: course for course in importable_courses(user)}
+    result = parse_questions(data, courses)
+    if not result.is_valid:
+        return result
+    with transaction.atomic():
+        for parsed in result.questions:
+            question = Question.objects.create(created_by=user, **_question_fields(parsed))
+            Choice.objects.bulk_create(
+                Choice(question=question, text=text, is_correct=(n == parsed.correct_index))
+                for n, text in enumerate(parsed.options)
+            )
+            result.created.append(question)
+    return result
+
+
+def _question_fields(parsed):
+    # parsed.topic is validated but not saved yet: Question has no topic field
+    # (OEP-F-010). Add it here once the topic field decision is made.
+    return {
+        "course": parsed.course,
+        "text": parsed.text,
+        "difficulty": parsed.difficulty,
+        "marks": parsed.marks,
+    }
 
 
 def parse_questions(data, courses):

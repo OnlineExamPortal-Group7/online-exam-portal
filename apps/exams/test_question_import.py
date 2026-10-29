@@ -1,8 +1,14 @@
 from types import SimpleNamespace
+from unittest import mock
 
-from django.test import SimpleTestCase
+from django.core.exceptions import PermissionDenied
+from django.test import SimpleTestCase, TestCase
 
-from .question_import import MAX_ROWS, parse_questions
+from apps.accounts.models import User
+from apps.administration.models import Course
+
+from .models import Choice, Question
+from .question_import import MAX_ROWS, import_questions, parse_questions
 
 HEADER = "course,topic,difficulty,question,option_1,option_2,option_3,option_4,correct,marks"
 VALID_ROW = "CS101,Loops,easy,What does a for loop do?,Repeats code,Ends a program,,,1,2"
@@ -141,3 +147,86 @@ class FileErrorTest(SimpleTestCase):
         result = parse(*rows)
         self.assertTrue(result.is_valid, messages(result)[:3])
         self.assertEqual(len(result.questions), MAX_ROWS)
+
+
+def make_user(username, role):
+    email = f"{username}@example.com"
+    return User.objects.create_user(username, email, "Str0ng-pass-123", role=role)
+
+
+class ImportQuestionsTest(TestCase):  # OEP-F-011
+    def setUp(self):
+        self.teacher = make_user("teacher", User.Role.INSTRUCTOR)
+        self.other_teacher = make_user("other", User.Role.INSTRUCTOR)
+        self.admin = make_user("admin", User.Role.ADMINISTRATOR)
+        self.course = Course.objects.create(
+            name="Programming", code="CS101", instructor=self.teacher
+        )
+        Course.objects.create(name="Maths", code="MA101", instructor=self.other_teacher)
+        Course.objects.create(name="Old", code="OLD1", instructor=self.teacher, is_active=False)
+
+    def data(self, *rows):
+        return "\n".join([HEADER, *rows]).encode()
+
+    def test_valid_file_creates_questions_with_one_correct_choice(self):
+        row_2 = "CS101,Loops,hard,Which is a loop?,if,for,def,,2,3"
+        result = import_questions(self.teacher, self.data(VALID_ROW, row_2))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(Question.objects.count(), 2)
+        question = Question.objects.get(text="Which is a loop?")
+        self.assertEqual(question.course, self.course)
+        self.assertEqual(question.created_by, self.teacher)
+        self.assertEqual(question.difficulty, "hard")
+        self.assertEqual(question.marks, 3)
+        self.assertEqual([c.text for c in question.choices.all()], ["if", "for", "def"])
+        self.assertEqual([c.text for c in question.choices.filter(is_correct=True)], ["for"])
+        self.assertEqual(result.created, list(Question.objects.order_by("id")))
+
+    def test_any_bad_row_means_nothing_is_saved(self):
+        bad_row = "CS101,Loops,easy,Q?,A,B,,,7,1"
+        result = import_questions(self.teacher, self.data(VALID_ROW, bad_row))
+        self.assertEqual(
+            [str(e) for e in result.errors], ["Row 3: correct is 7 but there is no option_7."]
+        )
+        self.assertEqual(result.created, [])
+        self.assertEqual(Question.objects.count(), 0)
+        self.assertEqual(Choice.objects.count(), 0)
+
+    def test_instructor_can_only_use_own_active_courses(self):
+        for code in ("MA101", "OLD1"):
+            with self.subTest(code=code):
+                data = self.data(VALID_ROW.replace("CS101", code))
+                result = import_questions(self.teacher, data)
+                self.assertIn(f"course '{code}' is not one of your", str(result.errors[0]))
+        self.assertEqual(Question.objects.count(), 0)
+
+    def test_administrator_can_use_any_active_course(self):
+        result = import_questions(self.admin, self.data(VALID_ROW.replace("CS101", "MA101")))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(Question.objects.get().course.code, "MA101")
+
+    def test_students_cannot_import(self):
+        student = make_user("student", User.Role.STUDENT)
+        with self.assertRaises(PermissionDenied):
+            import_questions(student, self.data(VALID_ROW))
+        self.assertEqual(Question.objects.count(), 0)
+
+    def test_database_error_part_way_rolls_back_everything(self):
+        real_bulk_create = Choice.objects.bulk_create
+        calls = []
+
+        def fail_on_second_question(objs, *args, **kwargs):
+            calls.append(1)
+            if len(calls) == 2:
+                raise RuntimeError("database went away")
+            return real_bulk_create(objs, *args, **kwargs)
+
+        rows = (VALID_ROW, VALID_ROW.replace("What", "Why"))
+        failing = mock.patch.object(
+            Choice.objects, "bulk_create", side_effect=fail_on_second_question
+        )
+        with failing:
+            with self.assertRaises(RuntimeError):
+                import_questions(self.teacher, self.data(*rows))
+        self.assertEqual(Question.objects.count(), 0)
+        self.assertEqual(Choice.objects.count(), 0)
