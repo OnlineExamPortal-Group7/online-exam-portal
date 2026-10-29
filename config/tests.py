@@ -39,5 +39,15 @@ class ProductionSettingsTest(SimpleTestCase):
         with self.assertRaisesMessage(ImproperlyConfigured, "POSTGRES_PASSWORD"):
             load_prod({**REQUIRED, "POSTGRES_PASSWORD": "   "})
 
+    def test_allowed_hosts_with_only_commas_and_spaces_is_rejected(self):
+        for value in [", , ", ",", ",,,", " , ,\t,"]:
+            with self.subTest(value=value):
+                with self.assertRaisesMessage(ImproperlyConfigured, "DJANGO_ALLOWED_HOSTS"):
+                    load_prod({**REQUIRED, "DJANGO_ALLOWED_HOSTS": value})
+
+    def test_allowed_hosts_ignores_empty_entries_and_spaces(self):
+        prod = load_prod({**REQUIRED, "DJANGO_ALLOWED_HOSTS": " a.com, ,b.com ,"})
+        self.assertEqual(prod.ALLOWED_HOSTS, ["a.com", "b.com"])
+
     def tearDown(self):
         sys.modules.pop("config.settings.prod", None)

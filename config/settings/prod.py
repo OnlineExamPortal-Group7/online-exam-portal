@@ -10,6 +10,12 @@ SECRET_KEY = require_env("DJANGO_SECRET_KEY")  # noqa: F405
 ALLOWED_HOSTS = [
     h.strip() for h in require_env("DJANGO_ALLOWED_HOSTS").split(",") if h.strip()  # noqa: F405
 ]
+# A value such as ", ," passes require_env() but leaves no usable host.
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured(  # noqa: F405
+        "DJANGO_ALLOWED_HOSTS must contain at least one non-empty host name "
+        "(comma-separated, for example: exams.example.edu,www.example.edu)."
+    )
 
 DATABASES = {
     "default": {
