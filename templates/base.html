@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -6,7 +6,20 @@
   <title>{% block title %}Online Exam Portal{% endblock %}</title>
 </head>
 <body>
-  <header><h1>Online Exam Portal</h1></header>
+  <header>
+    <h1>Online Exam Portal</h1>
+    <nav aria-label="Account">
+      {% if user.is_authenticated %}
+        <span>{{ user.username }} ({{ user.get_role_display }})</span>
+        <form method="post" action="{% url 'accounts:logout' %}" style="display:inline">
+          {% csrf_token %}
+          <button type="submit">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'accounts:login' %}">Log in</a>
+      {% endif %}
+    </nav>
+  </header>
   <main>{% block content %}{% endblock %}</main>
 </body>
 </html>
