@@ -2,16 +2,30 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 def env(name, default=None):
+    """Read an optional environment variable."""
     return os.environ.get(name, default)
 
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", "insecure-dev-key-change-me")
+def require_env(name):
+    """Read a mandatory environment variable; fail clearly if it is missing or blank."""
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise ImproperlyConfigured(
+            f"Required environment variable {name} is not set. "
+            "Set it before starting the application (see .env.example)."
+        )
+    return value
+
+
+# SECRET_KEY and ALLOWED_HOSTS are defined per environment (dev.py / prod.py)
+# so that no insecure default can ever reach production.
 DEBUG = False
-ALLOWED_HOSTS = [h for h in env("DJANGO_ALLOWED_HOSTS", "").split(",") if h]
 
 INSTALLED_APPS = [
     "django.contrib.admin",

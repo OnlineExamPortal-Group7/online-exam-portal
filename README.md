@@ -33,7 +33,11 @@ flake8 .
 
 ## Settings
 `manage.py` uses `config.settings.dev` (SQLite). Production uses
-`config.settings.prod` (PostgreSQL, TLS settings); copy `.env.example` for variables.
+`config.settings.prod` (PostgreSQL, TLS settings). Production refuses to start
+(`ImproperlyConfigured`) unless `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `POSTGRES_DB`,
+`POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_HOST` are set and non-empty. See `.env.example`.
+Generate a key with:
+`python -c "from django.core.management.utils import get_random_secret_key as g; print(g())"`
 
 ## Workflow
 Branch from `main` (`feature/issue-N-short-name`), open a pull request that says
