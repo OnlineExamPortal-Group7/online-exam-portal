@@ -42,3 +42,9 @@ Generate a key with:
 ## Workflow
 Branch from `main` (`feature/issue-N-short-name`), open a pull request that says
 `Closes #N`, and get one teammate's review before merging.
+
+## Authentication and roles
+- Log in at `/accounts/login/` with e-mail and password. Roles: Student, Instructor, Administrator.
+- Protect views with `@role_required(User.Role.INSTRUCTOR)` or `RoleRequiredMixin`
+  (`apps/accounts/permissions.py`). Wrong role gives HTTP 403; anonymous users go to login.
+- Creating an administrator: `python manage.py createsuperuser` (gets the Administrator role).

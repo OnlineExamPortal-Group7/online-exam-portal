@@ -1,2 +1,4 @@
 {% extends "base.html" %}
-{% block content %}<p>Welcome to the Online Exam Portal.</p>{% endblock %}
+{% block content %}
+<p>Welcome to the Online Exam Portal. Please <a href="{% url 'accounts:login' %}">log in</a>.</p>
+{% endblock %}
