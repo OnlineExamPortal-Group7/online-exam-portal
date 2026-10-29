@@ -2,7 +2,9 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.core.exceptions import PermissionDenied
-from django.test import SimpleTestCase, TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, SimpleTestCase, TestCase
+from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.administration.models import Course
@@ -230,3 +232,73 @@ class ImportQuestionsTest(TestCase):  # OEP-F-011
                 import_questions(self.teacher, self.data(*rows))
         self.assertEqual(Question.objects.count(), 0)
         self.assertEqual(Choice.objects.count(), 0)
+
+
+class QuestionImportPageTest(TestCase):  # OEP-F-011, OEP-SR-003
+    def setUp(self):
+        self.url = reverse("exams:question_import")
+        self.teacher = make_user("teacher", User.Role.INSTRUCTOR)
+        Course.objects.create(name="Programming", code="CS101", instructor=self.teacher)
+        self.client.force_login(self.teacher)
+
+    def upload(self, *rows, name="questions.csv", client=None):
+        data = "\n".join([HEADER, *rows]).encode()
+        csv_file = SimpleUploadedFile(name, data, content_type="text/csv")
+        return (client or self.client).post(self.url, {"file": csv_file}, follow=True)
+
+    def test_instructor_and_administrator_see_the_form(self):
+        admin = make_user("admin", User.Role.ADMINISTRATOR)
+        for user in (self.teacher, admin):
+            self.client.force_login(user)
+            with self.subTest(role=user.role):
+                response = self.client.get(self.url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'enctype="multipart/form-data"')
+                self.assertContains(response, reverse("exams:question_import_sample"))
+
+    def test_valid_file_is_imported(self):
+        response = self.upload(VALID_ROW, VALID_ROW.replace("What", "Why"))
+        self.assertRedirects(response, self.url)
+        self.assertContains(response, "Imported 2 questions.")
+        self.assertEqual(Question.objects.count(), 2)
+
+    def test_bad_rows_are_listed_and_nothing_is_imported(self):
+        response = self.upload(VALID_ROW, "CS101,,easy,Q?,A,B,,,1,1", "CS101,T,easy,Q?,A,B,,,4,1")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Nothing was imported.")
+        self.assertContains(response, "Row 3: topic is empty.")
+        self.assertContains(response, "Row 4: correct is 4 but there is no option_4.")
+        self.assertEqual(Question.objects.count(), 0)
+
+    def test_non_csv_file_is_rejected(self):
+        response = self.upload(VALID_ROW, name="questions.xlsx")
+        self.assertContains(response, "Choose a .csv file.")
+        self.assertEqual(Question.objects.count(), 0)
+
+    def test_sample_csv_downloads_and_imports_cleanly(self):
+        response = self.client.get(reverse("exams:question_import_sample"))
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("attachment;", response["Content-Disposition"])
+        result = import_questions(self.teacher, response.content)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.created), 2)
+
+    def test_students_get_403_and_nothing_is_imported(self):
+        student = Client()
+        student.force_login(make_user("student", User.Role.STUDENT))
+        self.assertEqual(student.get(self.url).status_code, 403)
+        self.assertEqual(student.get(reverse("exams:question_import_sample")).status_code, 403)
+        self.assertEqual(self.upload(VALID_ROW, client=student).status_code, 403)
+        self.assertEqual(Question.objects.count(), 0)
+
+    def test_anonymous_is_redirected_to_login(self):
+        response = Client().get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_upload_without_csrf_token_is_rejected(self):  # OEP-SR-005
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.teacher)
+        csv_file = SimpleUploadedFile("q.csv", f"{HEADER}\n{VALID_ROW}".encode())
+        self.assertEqual(client.post(self.url, {"file": csv_file}).status_code, 403)
+        self.assertEqual(Question.objects.count(), 0)
