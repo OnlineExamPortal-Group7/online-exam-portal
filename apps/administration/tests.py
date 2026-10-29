@@ -152,6 +152,67 @@ class UserListViewTest(TestCase):  # OEP-F-002, OEP-SR-003
         self.assertIn(reverse("accounts:login"), response["Location"])
 
 
+class UserCreateViewTest(TestCase):  # OEP-F-004
+    def setUp(self):
+        self.url = reverse("administration:user_create")
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+
+    def form_data(self, **overrides):
+        data = {
+            "username": "newbie", "email": "Newbie@Example.com",
+            "first_name": "New", "last_name": "User", "role": User.Role.INSTRUCTOR,
+            "password1": PASSWORD, "password2": PASSWORD,
+        }
+        return {**data, **overrides}
+
+    def sign_in(self, user):
+        self.client.login(username=user.email, password=PASSWORD)
+
+    def test_administrator_sees_the_form(self):
+        self.sign_in(self.admin)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="role"')
+
+    def test_administrator_creates_user_with_role(self):
+        self.sign_in(self.admin)
+        response = self.client.post(self.url, self.form_data(), follow=True)
+        self.assertRedirects(response, reverse("administration:user_list"))
+        self.assertContains(response, "Created newbie (Instructor).")
+        user = User.objects.get(username="newbie")
+        self.assertEqual(user.role, User.Role.INSTRUCTOR)
+        self.assertEqual(user.email, "newbie@example.com")
+        self.assertTrue(user.check_password(PASSWORD))
+
+    def test_duplicate_email_is_rejected_ignoring_case(self):
+        self.sign_in(self.admin)
+        response = self.client.post(self.url, self.form_data(email="ADMIN@example.com"))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="newbie").exists())
+
+    def test_weak_or_mismatched_password_is_rejected(self):
+        self.sign_in(self.admin)
+        for passwords in (("12345678", "12345678"), (PASSWORD, PASSWORD + "x")):
+            with self.subTest(passwords=passwords):
+                data = self.form_data(password1=passwords[0], password2=passwords[1])
+                self.assertEqual(self.client.post(self.url, data).status_code, 200)
+                self.assertFalse(User.objects.filter(username="newbie").exists())
+
+    def test_other_roles_get_403_and_nothing_is_created(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            self.sign_in(make_user(role, role=role))
+            with self.subTest(role=role):
+                self.assertEqual(self.client.get(self.url).status_code, 403)
+                self.assertEqual(self.client.post(self.url, self.form_data()).status_code, 403)
+        self.assertFalse(User.objects.filter(username="newbie").exists())
+
+    def test_anonymous_is_redirected_to_login(self):
+        response = self.client.post(self.url, self.form_data())
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+        self.assertFalse(User.objects.filter(username="newbie").exists())
+
+
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004
     def setUp(self):
         self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)

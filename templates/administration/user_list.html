@@ -2,6 +2,8 @@
 {% block title %}Manage users{% endblock %}
 {% block content %}
 <h2>Manage users</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<p><a href="{% url 'administration:user_create' %}">Create user</a></p>
 <table>
   <thead>
     <tr><th>Username</th><th>Email</th><th>Name</th><th>Role</th><th>Status</th></tr>
