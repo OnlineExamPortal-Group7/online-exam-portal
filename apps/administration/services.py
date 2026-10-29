@@ -3,23 +3,14 @@
 Views call these functions instead of changing users directly, so the rules
 live in one place.
 """
-from django.contrib.auth import SESSION_KEY
-from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.sessions import end_sessions
 
 
 def audit_hook(action, actor, target, **details):
     """AUDIT HOOK: implemented in #22 (audit log). Called after every change below."""
-
-
-def end_sessions(user):
-    """Sign the user out everywhere, so a change applies on their next login (AC-004)."""
-    for session in Session.objects.filter(expire_date__gt=timezone.now()):
-        if session.get_decoded().get(SESSION_KEY) == str(user.pk):
-            session.delete()
 
 
 def _require_administrator(actor):
