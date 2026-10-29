@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Manage users{% endblock %}
+{% block content %}
+<h2>Manage users</h2>
+<table>
+  <thead>
+    <tr><th>Username</th><th>Email</th><th>Name</th><th>Role</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for account in users %}
+    <tr>
+      <td>{{ account.username }}</td>
+      <td>{{ account.email }}</td>
+      <td>{{ account.get_full_name }}</td>
+      <td>{{ account.get_role_display }}</td>
+      <td>{{ account.is_active|yesno:"Active,Deactivated" }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No users yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

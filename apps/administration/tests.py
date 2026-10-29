@@ -123,6 +123,35 @@ class UserServiceTest(TestCase):  # OEP-F-004
         )
 
 
+class UserListViewTest(TestCase):  # OEP-F-002, OEP-SR-003
+    def setUp(self):
+        self.url = reverse("administration:user_list")
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.inactive = make_user("gone", is_active=False)
+
+    def test_administrator_sees_all_users_with_role_and_status(self):
+        self.client.login(username=self.admin.email, password=PASSWORD)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "administration/user_list.html")
+        self.assertContains(response, "admin@example.com")
+        self.assertContains(response, "gone@example.com")
+        self.assertContains(response, "Administrator")
+        self.assertContains(response, "Deactivated")
+
+    def test_other_roles_get_403(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            user = make_user(role, role=role)
+            self.client.login(username=user.email, password=PASSWORD)
+            with self.subTest(role=role):
+                self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_anonymous_is_redirected_to_login(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004
     def setUp(self):
         self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)

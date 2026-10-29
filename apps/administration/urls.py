@@ -1,3 +1,9 @@
+from django.urls import path
+
+from . import views
+
 app_name = "administration"
 
-urlpatterns: list = []  # routes are added by later issues
+urlpatterns = [
+    path("users/", views.UserListView.as_view(), name="user_list"),
+]
