@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
 from apps.accounts.models import User
@@ -16,3 +17,7 @@ class AdminUserCreateForm(UserCreationForm):
         if User.objects.filter(email__iexact=email).exists():
             raise self.instance.unique_error_message(User, ["email"])
         return email
+
+
+class RoleChangeForm(forms.Form):
+    role = forms.ChoiceField(choices=User.Role.choices)

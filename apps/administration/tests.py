@@ -213,6 +213,92 @@ class UserCreateViewTest(TestCase):  # OEP-F-004
         self.assertFalse(User.objects.filter(username="newbie").exists())
 
 
+class UserActionViewTest(TestCase):  # OEP-F-004
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.student = make_user("student")
+        self.client.login(username=self.admin.email, password=PASSWORD)
+
+    def url(self, name, user):
+        return reverse(f"administration:{name}", args=[user.pk])
+
+    def test_deactivate_and_reactivate(self):
+        response = self.client.post(self.url("user_deactivate", self.student), follow=True)
+        self.assertRedirects(response, reverse("administration:user_list"))
+        self.assertContains(response, "Deactivated student.")
+        self.student.refresh_from_db()
+        self.assertFalse(self.student.is_active)
+
+        response = self.client.post(self.url("user_reactivate", self.student), follow=True)
+        self.assertContains(response, "Reactivated student.")
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.is_active)
+
+    def test_change_role(self):
+        response = self.client.post(
+            self.url("user_role", self.student), {"role": User.Role.INSTRUCTOR}, follow=True
+        )
+        self.assertContains(response, "student is now Instructor.")
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.role, User.Role.INSTRUCTOR)
+
+    def test_invalid_role_shows_error(self):
+        response = self.client.post(
+            self.url("user_role", self.student), {"role": "superuser"}, follow=True
+        )
+        self.assertContains(response, "Choose a valid role.")
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.role, User.Role.STUDENT)
+
+    def test_self_deactivate_and_self_demote_show_errors(self):
+        response = self.client.post(self.url("user_deactivate", self.admin), follow=True)
+        self.assertContains(response, "You cannot deactivate your own account.")
+        response = self.client.post(
+            self.url("user_role", self.admin), {"role": User.Role.STUDENT}, follow=True
+        )
+        self.assertContains(response, "You cannot remove your own Administrator role.")
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+        self.assertEqual(self.admin.role, User.Role.ADMINISTRATOR)
+
+    def test_get_is_not_allowed(self):
+        for name in ("user_deactivate", "user_reactivate", "user_role"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(self.url(name, self.student)).status_code, 405)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.is_active)
+
+    def test_unknown_user_is_404(self):
+        response = self.client.post(reverse("administration:user_deactivate", args=[9999]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_post_without_csrf_token_is_rejected(self):  # OEP-SR-005
+        client = Client(enforce_csrf_checks=True)
+        client.login(username=self.admin.email, password=PASSWORD)
+        self.assertEqual(client.post(self.url("user_deactivate", self.student)).status_code, 403)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.is_active)
+
+    def test_other_roles_get_403_and_nothing_changes(self):
+        instructor = make_user("teacher", role=User.Role.INSTRUCTOR)
+        for user in (self.student, instructor):
+            client = Client()
+            client.login(username=user.email, password=PASSWORD)
+            target = self.admin
+            with self.subTest(role=user.role):
+                self.assertEqual(client.post(self.url("user_deactivate", target)).status_code, 403)
+                response = client.post(self.url("user_role", target), {"role": User.Role.STUDENT})
+                self.assertEqual(response.status_code, 403)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+        self.assertEqual(self.admin.role, User.Role.ADMINISTRATOR)
+
+    def test_list_page_shows_action_buttons(self):
+        response = self.client.get(reverse("administration:user_list"))
+        self.assertContains(response, self.url("user_deactivate", self.student))
+        self.assertContains(response, self.url("user_role", self.student))
+
+
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004
     def setUp(self):
         self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
