@@ -1,16 +1,18 @@
-
 import random
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.shortcuts import redirect, render
+from django.http import HttpResponseForbidden
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from apps.accounts.models import User
 
 from .forms import ExamCreationForm
-from .models import ExamQuestion
+from .models import Answer, Choice, Exam, ExamAttempt, ExamQuestion, Question
 
 
 @login_required
@@ -65,3 +67,219 @@ def create_exam(request):
         "exams/create_exam.html",
         {"form": form},
     )
+
+
+def expire_attempt_if_needed(attempt):
+    """Expire an attempt using the server's current time."""
+    if (
+        attempt.status == ExamAttempt.Status.IN_PROGRESS
+        and timezone.now() >= attempt.deadline_at
+    ):
+        attempt.status = ExamAttempt.Status.TIMED_OUT
+        attempt.submitted_at = timezone.now()
+        attempt.save(update_fields=["status", "submitted_at"])
+        return True
+
+    return attempt.status == ExamAttempt.Status.TIMED_OUT
+
+
+@login_required
+def start_attempt(request, exam_id):
+    """Start an exam or resume the student's existing attempt."""
+    if request.user.role != User.Role.STUDENT:
+        raise PermissionDenied
+
+    with transaction.atomic():
+        exam = get_object_or_404(
+            Exam.objects.select_for_update(),
+            pk=exam_id,
+            status=Exam.Status.PUBLISHED,
+        )
+
+        now = timezone.now()
+
+        if now < exam.start_time or now >= exam.end_time:
+            messages.error(
+                request,
+                "This exam is not currently available.",
+            )
+            return redirect("accounts:student_dashboard")
+
+        attempt = (
+            ExamAttempt.objects.select_for_update()
+            .filter(exam=exam, student=request.user)
+            .order_by("-started_at")
+            .first()
+        )
+
+        if attempt is not None:
+            if expire_attempt_if_needed(attempt):
+                messages.error(request, "Your exam time has expired.")
+                return redirect("accounts:student_dashboard")
+
+            if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+                messages.error(
+                    request,
+                    "You have already submitted this exam.",
+                )
+                return redirect("accounts:student_dashboard")
+        else:
+            deadline = min(
+                now + timedelta(minutes=exam.duration_minutes),
+                exam.end_time,
+            )
+
+            attempt = ExamAttempt.objects.create(
+                exam=exam,
+                student=request.user,
+                deadline_at=deadline,
+            )
+
+    return redirect(
+        "exams:take_attempt",
+        attempt_id=attempt.pk,
+    )
+
+
+@login_required
+def take_attempt(request, attempt_id):
+    """Display an active attempt and its remaining time."""
+    if request.user.role != User.Role.STUDENT:
+        raise PermissionDenied
+
+    with transaction.atomic():
+        attempt = get_object_or_404(
+            ExamAttempt.objects.select_for_update().select_related("exam"),
+            pk=attempt_id,
+            student=request.user,
+        )
+
+        if expire_attempt_if_needed(attempt):
+            messages.error(request, "Your exam time has expired.")
+            return redirect("accounts:student_dashboard")
+
+        if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+            messages.error(request, "This attempt is no longer active.")
+            return redirect("accounts:student_dashboard")
+
+        remaining_seconds = max(
+            0,
+            int(
+                (attempt.deadline_at - timezone.now()).total_seconds()
+            ),
+        )
+
+    questions = [
+        item.question
+        for item in (
+            ExamQuestion.objects.filter(exam=attempt.exam)
+            .select_related("question")
+            .prefetch_related("question__choices")
+        )
+    ]
+
+    saved_answers = {
+        answer.question_id: answer.selected_choice_id
+        for answer in attempt.answers.all()
+    }
+
+    # Make each saved choice available to the template.
+    for question in questions:
+        question.selected_choice_id = saved_answers.get(question.pk)
+
+    return render(
+        request,
+        "exams/take_attempt.html",
+        {
+            "attempt": attempt,
+            "questions": questions,
+            "remaining_seconds": remaining_seconds,
+        },
+    )
+
+
+@login_required
+def save_answer(request, attempt_id):
+    """Save an answer only if the server deadline has not passed."""
+    if request.user.role != User.Role.STUDENT:
+        raise PermissionDenied
+
+    if request.method != "POST":
+        return HttpResponseForbidden("POST required.")
+
+    with transaction.atomic():
+        attempt = get_object_or_404(
+            ExamAttempt.objects.select_for_update().select_related("exam"),
+            pk=attempt_id,
+            student=request.user,
+        )
+
+        if expire_attempt_if_needed(attempt):
+            messages.error(request, "Your exam time has expired.")
+            return redirect("accounts:student_dashboard")
+
+        if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+            return HttpResponseForbidden("This attempt is not active.")
+
+        question = get_object_or_404(
+            Question,
+            pk=request.POST.get("question_id"),
+            exam_usages__exam=attempt.exam,
+        )
+
+        choice_id = request.POST.get("choice_id")
+        choice = None
+
+        if choice_id:
+            choice = get_object_or_404(
+                Choice,
+                pk=choice_id,
+                question=question,
+            )
+
+        Answer.objects.update_or_create(
+            attempt=attempt,
+            question=question,
+            defaults={"selected_choice": choice},
+        )
+
+    messages.success(request, "Answer saved.")
+    return redirect(
+        "exams:take_attempt",
+        attempt_id=attempt.pk,
+    )
+
+
+@login_required
+def submit_attempt(request, attempt_id):
+    """Submit an attempt while enforcing its server-side deadline."""
+    if request.user.role != User.Role.STUDENT:
+        raise PermissionDenied
+
+    if request.method != "POST":
+        return HttpResponseForbidden("POST required.")
+
+    with transaction.atomic():
+        attempt = get_object_or_404(
+            ExamAttempt.objects.select_for_update(),
+            pk=attempt_id,
+            student=request.user,
+        )
+
+        if expire_attempt_if_needed(attempt):
+            messages.error(
+                request,
+                "The exam deadline has passed. Your attempt has timed out.",
+            )
+            return redirect("accounts:student_dashboard")
+
+        if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+            messages.error(request, "This attempt is no longer active.")
+            return redirect("accounts:student_dashboard")
+
+        attempt.status = ExamAttempt.Status.SUBMITTED
+        attempt.submitted_at = timezone.now()
+        attempt.save(update_fields=["status", "submitted_at"])
+
+    messages.success(request, "Your exam has been submitted.")
+    return redirect("accounts:student_dashboard")

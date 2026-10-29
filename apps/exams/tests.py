@@ -1,4 +1,6 @@
+
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
@@ -7,7 +9,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.administration.models import Course
 
-from .models import Exam, Question
+from .models import Answer, Choice, Exam, ExamAttempt, ExamQuestion, Question
 
 
 class ExamCreationTests(TestCase):
@@ -123,3 +125,237 @@ class ExamCreationTests(TestCase):
             Exam.objects.filter(title="Invalid Exam").exists()
         )
         self.assertIn("end_time", response.context["form"].errors)
+
+
+class ServerAuthoritativeTimerTests(ExamCreationTests):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+
+        now = timezone.now()
+
+        cls.exam = Exam.objects.create(
+            course=cls.course,
+            title="Timer Test Exam",
+            description="Testing the server-side timer",
+            created_by=cls.instructor,
+            start_time=now - timedelta(minutes=5),
+            end_time=now + timedelta(hours=2),
+            duration_minutes=30,
+            total_marks=5,
+            randomize_questions=False,
+            status=Exam.Status.PUBLISHED,
+        )
+
+        ExamQuestion.objects.create(
+            exam=cls.exam,
+            question=cls.question1,
+            position=1,
+        )
+        ExamQuestion.objects.create(
+            exam=cls.exam,
+            question=cls.question2,
+            position=2,
+        )
+
+        cls.choice = Choice.objects.create(
+            question=cls.question1,
+            text="A sample choice",
+            is_correct=True,
+        )
+
+    def create_attempt(self, deadline=None, status=None):
+        now = timezone.now()
+
+        return ExamAttempt.objects.create(
+            exam=self.exam,
+            student=self.student,
+            deadline_at=deadline or now + timedelta(minutes=20),
+            status=status or ExamAttempt.Status.IN_PROGRESS,
+        )
+
+    def test_start_attempt_creates_server_calculated_deadline(self):
+        self.client.force_login(self.student)
+
+        before = timezone.now()
+
+        response = self.client.get(
+            reverse("exams:start_attempt", args=[self.exam.pk])
+        )
+
+        after = timezone.now()
+
+        self.assertEqual(response.status_code, 302)
+
+        attempt = ExamAttempt.objects.get(
+            exam=self.exam,
+            student=self.student,
+        )
+
+        expected_minimum = before + timedelta(minutes=30)
+        expected_maximum = after + timedelta(minutes=30)
+
+        self.assertGreaterEqual(
+            attempt.deadline_at,
+            expected_minimum,
+        )
+        self.assertLessEqual(
+            attempt.deadline_at,
+            expected_maximum,
+        )
+        self.assertEqual(
+            response.url,
+            reverse(
+                "exams:take_attempt",
+                args=[attempt.pk],
+            ),
+        )
+
+    def test_deadline_never_exceeds_exam_end_time(self):
+        self.client.force_login(self.student)
+
+        with patch(
+            "apps.exams.views.timezone.now",
+            return_value=self.exam.end_time - timedelta(minutes=5),
+        ):
+            response = self.client.get(
+                reverse("exams:start_attempt", args=[self.exam.pk])
+            )
+
+        self.assertEqual(response.status_code, 302)
+
+        attempt = ExamAttempt.objects.get(
+            exam=self.exam,
+            student=self.student,
+        )
+
+        self.assertEqual(attempt.deadline_at, self.exam.end_time)
+
+    def test_restarting_exam_does_not_reset_deadline(self):
+        original_deadline = timezone.now() + timedelta(minutes=10)
+        attempt = self.create_attempt(deadline=original_deadline)
+
+        self.client.force_login(self.student)
+
+        response = self.client.get(
+            reverse("exams:start_attempt", args=[self.exam.pk])
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        attempt.refresh_from_db()
+
+        self.assertEqual(attempt.deadline_at, original_deadline)
+        self.assertEqual(
+            ExamAttempt.objects.filter(
+                exam=self.exam,
+                student=self.student,
+            ).count(),
+            1,
+        )
+
+    def test_attempt_page_displays_countdown(self):
+        attempt = self.create_attempt()
+
+        self.client.force_login(self.student)
+
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("remaining_seconds", response.context)
+        self.assertContains(response, "Time remaining")
+
+    def test_expired_attempt_cannot_save_answer(self):
+        attempt = self.create_attempt(
+            deadline=timezone.now() - timedelta(seconds=1),
+        )
+
+        self.client.force_login(self.student)
+
+        response = self.client.post(
+            reverse("exams:save_answer", args=[attempt.pk]),
+            {
+                "question_id": self.question1.pk,
+                "choice_id": self.choice.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            Answer.objects.filter(attempt=attempt).exists()
+        )
+
+        attempt.refresh_from_db()
+        self.assertEqual(
+            attempt.status,
+            ExamAttempt.Status.TIMED_OUT,
+        )
+
+    def test_expired_attempt_cannot_be_submitted_as_active(self):
+        attempt = self.create_attempt(
+            deadline=timezone.now() - timedelta(seconds=1),
+        )
+
+        self.client.force_login(self.student)
+
+        response = self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        attempt.refresh_from_db()
+
+        self.assertEqual(
+            attempt.status,
+            ExamAttempt.Status.TIMED_OUT,
+        )
+
+    def test_student_cannot_access_another_students_attempt(self):
+        another_student = User.objects.create_user(
+            username="student2",
+            email="student2@example.com",
+            password="TestPassword123!",
+            role=User.Role.STUDENT,
+        )
+
+        attempt = self.create_attempt()
+
+        self.client.force_login(another_student)
+
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_expired_attempt_is_not_displayed_as_active(self):
+        attempt = self.create_attempt(
+            deadline=timezone.now() - timedelta(seconds=1),
+        )
+
+        self.client.force_login(self.student)
+
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        attempt.refresh_from_db()
+
+        self.assertEqual(
+            attempt.status,
+            ExamAttempt.Status.TIMED_OUT,
+        )
+
+    def test_instructor_cannot_start_student_attempt(self):
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(
+            reverse("exams:start_attempt", args=[self.exam.pk])
+        )
+
+        self.assertEqual(response.status_code, 403)

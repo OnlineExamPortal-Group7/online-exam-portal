@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}{{ attempt.exam.title }}{% endblock %}
+
+{% block content %}
+<h2>{{ attempt.exam.title }}</h2>
+
+{% if attempt.exam.description %}
+    <p>{{ attempt.exam.description }}</p>
+{% endif %}
+
+<p>
+    Time remaining:
+    <strong id="timer" aria-live="polite">Loading...</strong>
+</p>
+
+<p>
+    Your deadline is controlled by the server. Refreshing this page
+    will not restart your attempt.
+</p>
+
+{% for question in questions %}
+    <section>
+        <h3>{{ forloop.counter }}. {{ question.text }}</h3>
+
+        <form
+            method="post"
+            action="{% url 'exams:save_answer' attempt.id %}"
+        >
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="question_id"
+                value="{{ question.id }}"
+            >
+
+            {% for choice in question.choices.all %}
+                <div>
+                    <label>
+                        <input
+                            type="radio"
+                            name="choice_id"
+                            value="{{ choice.id }}"
+                            {% if question.selected_choice_id == choice.id %}
+                                checked
+                            {% endif %}
+                        >
+                        {{ choice.text }}
+                    </label>
+                </div>
+            {% endfor %}
+
+            <button type="submit">Save answer</button>
+        </form>
+    </section>
+    <hr>
+{% empty %}
+    <p>No questions have been added to this exam.</p>
+{% endfor %}
+
+<form
+    id="submit-exam"
+    method="post"
+    action="{% url 'exams:submit_attempt' attempt.id %}"
+>
+    {% csrf_token %}
+    <button type="submit">Submit exam</button>
+</form>
+
+<script>
+(() => {
+    let remaining = {{ remaining_seconds }};
+    let submitting = false;
+
+    const timer = document.getElementById("timer");
+    const submitForm = document.getElementById("submit-exam");
+
+    function updateTimer() {
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+
+        timer.textContent =
+            `${minutes}:${String(seconds).padStart(2, "0")}`;
+
+        if (remaining <= 0) {
+            timer.textContent = "Time expired";
+
+            if (!submitting) {
+                submitting = true;
+                submitForm.requestSubmit();
+            }
+            return;
+        }
+
+        remaining -= 1;
+        window.setTimeout(updateTimer, 1000);
+    }
+
+    submitForm.addEventListener("submit", () => {
+        submitting = true;
+    });
+
+    updateTimer();
+})();
+</script>
+{% endblock %}
