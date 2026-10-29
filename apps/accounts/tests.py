@@ -1,12 +1,13 @@
-
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
 from .models import User
+
 
 PASSWORD = "Str0ng-pass-123"
 
@@ -213,12 +214,6 @@ class PasswordResetTest(TestCase):
             response, reverse("accounts:password_reset_done")
         )
         self.assertEqual(len(mail.outbox), 0)
-
-from django.core.cache import cache
-from django.test import TestCase
-from django.urls import reverse
-
-from .models import User
 
 
 class AccountLockoutTest(TestCase):
