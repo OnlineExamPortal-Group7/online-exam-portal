@@ -2,7 +2,9 @@ from unittest import mock
 
 from django.apps import apps
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import SimpleTestCase, TestCase
+from django.contrib.sessions.models import Session
+from django.test import Client, SimpleTestCase, TestCase
+from django.urls import reverse
 
 from apps.accounts.models import User
 
@@ -119,3 +121,52 @@ class UserServiceTest(TestCase):  # OEP-F-004
             "role_changed", self.admin, self.student,
             old_role=User.Role.STUDENT, new_role=User.Role.INSTRUCTOR,
         )
+
+
+class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.student = make_user("student")
+        self.other = make_user("other")
+        self.student_client = self.signed_in(self.student)
+        self.other_client = self.signed_in(self.other)
+
+    def signed_in(self, user):
+        client = Client()
+        self.assertTrue(client.login(username=user.email, password=PASSWORD))
+        return client
+
+    def assertSignedOut(self, client):
+        response = client.get(reverse("accounts:student_dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def assertStillSignedIn(self, client):
+        self.assertEqual(client.get(reverse("accounts:student_dashboard")).status_code, 200)
+
+    def test_deactivation_ends_the_users_sessions(self):
+        services.deactivate(self.admin, self.student)
+        self.assertSignedOut(self.student_client)
+        self.assertStillSignedIn(self.other_client)
+
+    def test_role_change_ends_the_users_sessions(self):
+        services.change_role(self.admin, self.student, User.Role.INSTRUCTOR)
+        self.assertSignedOut(self.student_client)
+        self.assertStillSignedIn(self.other_client)
+
+    def test_new_role_applies_on_next_login(self):
+        services.change_role(self.admin, self.student, User.Role.INSTRUCTOR)
+        client = self.signed_in(self.student)
+        response = client.get(reverse("accounts:dashboard"))
+        self.assertRedirects(
+            response, reverse("accounts:instructor_dashboard"), fetch_redirect_response=False
+        )
+
+    def test_setting_the_same_role_keeps_the_session(self):
+        services.change_role(self.admin, self.student, User.Role.STUDENT)
+        self.assertStillSignedIn(self.student_client)
+
+    def test_only_the_target_users_session_rows_are_deleted(self):
+        before = Session.objects.count()
+        services.deactivate(self.admin, self.student)
+        self.assertEqual(Session.objects.count(), before - 1)
