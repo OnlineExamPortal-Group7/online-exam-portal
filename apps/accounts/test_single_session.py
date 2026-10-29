@@ -55,3 +55,45 @@ class EndSessionsTest(TestCase):  # OEP-F-004, OEP-F-005
         )
         end_sessions(self.user)
         self.assertTrue(Session.objects.filter(session_key=client.session.session_key).exists())
+
+
+class SingleSessionOnLoginTest(TestCase):  # OEP-F-005
+    def setUp(self):
+        self.user = make_user("alice")
+
+    def logged_in(self, user):
+        client = Client()
+        self.assertTrue(client.login(username=user.email, password=PASSWORD))
+        return client
+
+    def test_new_login_ends_the_previous_session(self):
+        first = self.logged_in(self.user)
+        second = self.logged_in(self.user)
+        self.assertFalse(is_signed_in(first))
+        self.assertTrue(is_signed_in(second))
+
+    def test_user_has_exactly_one_session_after_login(self):
+        for _ in range(3):
+            client = self.logged_in(self.user)
+        sessions = [s for s in Session.objects.all() if s.get_decoded().get("_auth_user_id")]
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(sessions[0].session_key, client.session.session_key)
+
+    def test_other_users_stay_signed_in(self):
+        other_client = self.logged_in(make_user("bob"))
+        self.logged_in(self.user)
+        self.assertTrue(is_signed_in(other_client))
+
+    def test_logout_still_works(self):
+        client = self.logged_in(self.user)
+        client.post(reverse("accounts:logout"))
+        self.assertFalse(is_signed_in(client))
+
+    def test_admin_site_login_also_ends_the_previous_session(self):
+        admin = User.objects.create_superuser("root", "root@example.com", PASSWORD)
+        portal = self.logged_in(admin)
+        site = Client()
+        site.post(reverse("admin:login"), {"username": "root", "password": PASSWORD})
+        self.assertEqual(site.get(reverse("admin:index")).status_code, 200)
+        response = portal.get(reverse("accounts:admin_dashboard"))
+        self.assertIn(reverse("accounts:login"), response["Location"])
