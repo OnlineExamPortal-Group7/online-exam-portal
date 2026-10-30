@@ -100,3 +100,10 @@ LOGOUT_REDIRECT_URL = "accounts:login"
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "no-reply@oep.local")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "online-exam-portal-login-lockout",
+    }
+}
