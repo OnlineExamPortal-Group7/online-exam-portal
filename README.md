@@ -63,3 +63,24 @@ Administrators manage accounts at `/manage/users/` (OEP-F-004):
 Change users through `apps/administration/services.py` (`create_user`, `deactivate`,
 `reactivate`, `change_role`), not by editing `User` directly, so these rules and the
 audit hook (`audit_hook`, implemented by the audit-log issue #22) always apply.
+
+## Question import (CSV)
+Instructors and administrators import questions in bulk at `/exams/questions/import/`
+(OEP-F-011). Instructors can use their own active courses; administrators any active course.
+Students get HTTP 403. Download an example file from the import page.
+
+CSV format (UTF-8, header row first, up to 1 MB and 500 questions):
+
+| Column | Rule |
+|---|---|
+| `course` | course code |
+| `topic` | required, up to 100 characters |
+| `difficulty` | `easy`, `medium` or `hard` |
+| `question` | required |
+| `option_1` to `option_6` | 2 to 6 options, filled in order, all different |
+| `correct` | number of the one correct option, e.g. `2` |
+| `marks` | optional, whole number of at least 1 (default 1) |
+
+The whole file is checked first. If any row has a problem, nothing is imported and every
+problem is listed with its row number (the header is row 1). Otherwise all questions are saved
+in one transaction, so a fixed file can simply be uploaded again.

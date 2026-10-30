@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Import questions{% endblock %}
+{% block content %}
+<h2>Import questions from CSV</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+
+{% if errors %}
+<div role="alert">
+  <p>Nothing was imported. Fix these problems and upload the file again:</p>
+  <ul>
+    {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Import</button>
+</form>
+
+<h3>File format</h3>
+<p>First row: <code>course,topic,difficulty,question,option_1,option_2,...,option_6,correct,marks</code></p>
+<ul>
+  <li><code>course</code>: code of one of your active courses</li>
+  <li><code>difficulty</code>: easy, medium or hard</li>
+  <li>2 to 6 options, filled in order; <code>correct</code> is the number of the one correct option</li>
+  <li><code>option_3</code> to <code>option_6</code> and <code>marks</code> (default 1) are optional</li>
+</ul>
+<p><a href="{% url 'exams:question_import_sample' %}">Download an example CSV</a></p>
+{% endblock %}

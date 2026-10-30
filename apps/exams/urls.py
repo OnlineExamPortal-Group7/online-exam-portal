@@ -1,7 +1,7 @@
 
 from django.urls import path
 
-from . import views
+from . import import_views, views
 
 app_name = "exams"
 
@@ -26,5 +26,15 @@ urlpatterns = [
         "attempt/<int:attempt_id>/submit/",
         views.submit_attempt,
         name="submit_attempt",
+    ),
+    path(
+        "questions/import/",
+        import_views.QuestionImportView.as_view(),
+        name="question_import",
+    ),
+    path(
+        "questions/import/sample.csv",
+        import_views.SampleCsvView.as_view(),
+        name="question_import_sample",
     ),
 ]
