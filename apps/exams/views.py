@@ -218,7 +218,8 @@ def save_answer(request, attempt_id):
         question_count = ExamQuestion.objects.filter(exam=attempt.exam).count()
         next_question = max(0, min(next_question, max(question_count - 1, 0)))
 
-    return redirect(f"{redirect('exams:take_attempt', attempt_id=attempt.pk).url}?q={next_question}")
+    attempt_url = redirect("exams:take_attempt", attempt_id=attempt.pk).url
+    return redirect(f"{attempt_url}?q={next_question}")
 
 
 @login_required

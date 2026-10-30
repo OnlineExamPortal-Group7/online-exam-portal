@@ -1,9 +1,9 @@
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from apps.administration.models import Enrollment
 from apps.exams.models import Exam, ExamAttempt
 
 from .models import User
