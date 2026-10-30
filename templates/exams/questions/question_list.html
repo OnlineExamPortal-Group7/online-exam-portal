@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Question bank{% endblock %}
+{% block content %}
+<h2>Question bank</h2>
+{% include "exams/questions/_messages.html" %}
+<p><a href="{% url 'exams:question_create' %}">Add a question</a></p>
+
+<form method="get" aria-label="Filter questions">
+  {{ filter_form.as_p }}
+  <button type="submit">Filter</button>
+  <a href="{% url 'exams:question_list' %}">Clear</a>
+</form>
+
+{% if questions %}
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Question</th><th scope="col">Course</th><th scope="col">Difficulty</th>
+      <th scope="col">Marks</th><th scope="col">Choices</th><th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for question in questions %}
+    <tr>
+      <td><a href="{% url 'exams:question_detail' question.pk %}">{{ question.text|truncatechars:80 }}</a></td>
+      <td>{{ question.course.code }}</td>
+      <td>{{ question.get_difficulty_display }}</td>
+      <td>{{ question.marks }}</td>
+      <td>{{ question.choices.all|length }}</td>
+      <td>
+        <a href="{% url 'exams:question_update' question.pk %}">Edit</a>
+        <a href="{% url 'exams:question_delete' question.pk %}">Delete</a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if is_paginated %}
+<nav aria-label="Pages">
+  {% if page_obj.has_previous %}
+    <a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+  {% endif %}
+  Page {{ page_obj.number }} of {{ paginator.num_pages }}
+  {% if page_obj.has_next %}
+    <a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+  {% endif %}
+</nav>
+{% endif %}
+{% else %}
+<p>No questions found.</p>
+{% endif %}
+{% endblock %}

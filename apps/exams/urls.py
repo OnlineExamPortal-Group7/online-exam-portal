@@ -1,11 +1,11 @@
-
-from django.urls import path
+from django.urls import include, path
 
 from . import views
 
 app_name = "exams"
 
 urlpatterns = [
+    path("questions/", include("apps.exams.question_urls")),
     path("create/", views.create_exam, name="create"),
     path(
         "<int:exam_id>/start/",

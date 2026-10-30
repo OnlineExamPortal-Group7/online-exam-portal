@@ -3,4 +3,7 @@
 {% block content %}
 <h2>{{ title }}</h2>
 <p>Signed in as {{ user.email }}. Features for this role are added by later issues.</p>
+{% if user.role == "instructor" or user.role == "administrator" %}
+<p><a href="{% url 'exams:question_list' %}">Question bank</a></p>
+{% endif %}
 {% endblock %}

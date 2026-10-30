@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Question {{ question.pk }}{% endblock %}
+{% block content %}
+<h2>Question {{ question.pk }}</h2>
+{% include "exams/questions/_messages.html" %}
+<p>{{ question.text|linebreaksbr }}</p>
+<dl>
+  <dt>Course</dt><dd>{{ question.course }}</dd>
+  <dt>Difficulty</dt><dd>{{ question.get_difficulty_display }}</dd>
+  <dt>Marks</dt><dd>{{ question.marks }}</dd>
+  <dt>Created by</dt><dd>{{ question.created_by.username }}</dd>
+  <dt>Used in exams</dt><dd>{{ usage.exams }}</dd>
+</dl>
+<h3>Answer choices</h3>
+<ol>
+  {% for choice in question.choices.all %}
+    <li>{{ choice.text }}{% if choice.is_correct %} <strong>(correct)</strong>{% endif %}</li>
+  {% endfor %}
+</ol>
+<p>
+  <a href="{% url 'exams:question_update' question.pk %}">Edit</a>
+  <a href="{% url 'exams:question_delete' question.pk %}">Delete</a>
+  <a href="{% url 'exams:question_list' %}">Back to question bank</a>
+</p>
+{% endblock %}

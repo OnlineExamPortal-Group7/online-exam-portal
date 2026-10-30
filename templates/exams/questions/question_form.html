@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{% if creating %}Add question{% else %}Edit question{% endif %}{% endblock %}
+{% block content %}
+<h2>{% if creating %}Add a question{% else %}Edit question {{ question.pk }}{% endif %}</h2>
+{% include "exams/questions/_messages.html" %}
+<form method="post" novalidate>
+  {% csrf_token %}
+  {{ form.as_p }}
+
+  <fieldset>
+    <legend>Answer choices (2 to 6, exactly one correct)</legend>
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div role="alert">{{ formset.non_form_errors }}</div>{% endif %}
+    {% for choice_form in formset %}
+      <div>
+        {{ choice_form.id }}
+        {{ choice_form.non_field_errors }}
+        <p>
+          <label for="{{ choice_form.text.id_for_label }}">Choice {{ forloop.counter }}</label>
+          {{ choice_form.text }}
+          <label for="{{ choice_form.is_correct.id_for_label }}">Correct</label>
+          {{ choice_form.is_correct }}
+          {% if choice_form.instance.pk %}
+            <label for="{{ choice_form.DELETE.id_for_label }}">Remove</label>
+            {{ choice_form.DELETE }}
+          {% endif %}
+        </p>
+        {{ choice_form.text.errors }}
+      </div>
+    {% endfor %}
+  </fieldset>
+
+  <button type="submit">Save question</button>
+  <a href="{% url 'exams:question_list' %}">Cancel</a>
+</form>
+{% endblock %}
