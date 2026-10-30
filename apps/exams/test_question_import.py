@@ -140,6 +140,22 @@ class FileErrorTest(SimpleTestCase):
             with self.subTest(expected=expected):
                 self.assertFileError(data, expected)
 
+    def test_malformed_csv_structure_is_a_file_error(self):
+        unclosed_row = 'CS101,"Loops,easy,Q?,A,B,,,1,1'
+        cases = {
+            "quote never closed in a row": f"{HEADER}\n{VALID_ROW}\n{unclosed_row}\n",
+            "text after a closing quote": f'{HEADER}\nCS101,"Loops"x,easy,Q?,A,B,,,1,1\n',
+            "quote never closed in the header": f'"{HEADER}\n{VALID_ROW}\n',
+        }
+        for name, text in cases.items():
+            with self.subTest(case=name):
+                result = parse_questions(text.encode(), COURSES)
+                self.assertFalse(result.is_valid)
+                self.assertEqual(result.questions, [])
+                self.assertEqual(len(result.errors), 1, messages(result))
+                self.assertIsNone(result.errors[0].row)
+                self.assertIn("The file is not valid CSV near line", messages(result)[0])
+
     def test_too_many_rows(self):
         rows = [VALID_ROW.replace("What", f"Q{n}") for n in range(MAX_ROWS + 1)]
         self.assertFileError("\n".join([HEADER, *rows]).encode(), f"more than {MAX_ROWS} questions")
@@ -191,6 +207,14 @@ class ImportQuestionsTest(TestCase):  # OEP-F-011
         self.assertEqual(
             [str(e) for e in result.errors], ["Row 3: correct is 7 but there is no option_7."]
         )
+        self.assertEqual(result.created, [])
+        self.assertEqual(Question.objects.count(), 0)
+        self.assertEqual(Choice.objects.count(), 0)
+
+    def test_malformed_csv_imports_nothing(self):
+        data = f'{HEADER}\n{VALID_ROW}\nCS101,"Loops,easy,Q?,A,B,,,1,1\n'.encode()
+        result = import_questions(self.teacher, data)
+        self.assertIn("not valid CSV", str(result.errors[0]))
         self.assertEqual(result.created, [])
         self.assertEqual(Question.objects.count(), 0)
         self.assertEqual(Choice.objects.count(), 0)

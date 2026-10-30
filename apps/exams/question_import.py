@@ -121,8 +121,17 @@ def parse_questions(data, courses):
     except UnicodeDecodeError:
         return file_error("The file must be saved as UTF-8 CSV.")
 
-    reader = csv.reader(io.StringIO(text))
-    header = [name.strip().lower() for name in next(reader, [])]
+    # strict=True rejects broken quoting (e.g. a quote that is never closed) instead of
+    # silently merging the following lines into one value.
+    reader = csv.reader(io.StringIO(text), strict=True)
+    try:
+        rows = list(reader)
+    except csv.Error as error:
+        return file_error(
+            f"The file is not valid CSV near line {reader.line_num}: check for a missing "
+            f"or extra quote mark ({error})."
+        )
+    header = [name.strip().lower() for name in (rows[0] if rows else [])]
     if not any(header):
         return file_error("The file is empty.")
     missing = [name for name in REQUIRED_COLUMNS if name not in header]
@@ -139,7 +148,7 @@ def parse_questions(data, courses):
     courses = {code.lower(): course for code, course in courses.items()}
     seen = {}
     row_count = 0
-    for row_number, values in enumerate(reader, start=2):
+    for row_number, values in enumerate(rows[1:], start=2):
         if not any(value.strip() for value in values):
             continue  # blank line
         row_count += 1
