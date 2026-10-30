@@ -3,6 +3,7 @@ from django import forms
 from django.utils import timezone
 
 from apps.administration.models import Course
+from .access import questions_for
 from .models import Exam, Question
 
 
@@ -43,8 +44,7 @@ class ExamCreationForm(forms.ModelForm):
                 instructor=instructor,
                 is_active=True,
             )
-            self.fields["questions"].queryset = Question.objects.filter(
-                course__instructor=instructor,
+            self.fields["questions"].queryset = questions_for(instructor).filter(
                 course__is_active=True,
             ).select_related("course")
 

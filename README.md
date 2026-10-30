@@ -51,6 +51,11 @@ Branch from `main` (`feature/issue-N-short-name`), open a pull request that says
 - One active session per user (OEP-F-005): logging in on another device or browser signs out
   the previous session. To sign a user out from code, use `end_sessions(user)` in
   `apps/accounts/sessions.py`.
+- Question bank and answer keys (OEP-F-014): any page that shows questions, choices or
+  `is_correct` outside a student's own running attempt must use `QuestionBankAccessMixin` or
+  `@question_bank_required` (`apps/exams/access.py`), and list questions with
+  `questions_for(user)`. A test fails if any exams page lets a Student through, unless it is one
+  of the attempt pages in `STUDENT_ALLOWED_EXAM_URLS` (`apps/exams/test_question_bank_guard.py`).
 
 ## User administration
 Administrators manage accounts at `/manage/users/` (OEP-F-004):

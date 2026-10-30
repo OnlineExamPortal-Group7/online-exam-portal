@@ -10,16 +10,16 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.permissions import role_required
 
 from .forms import ExamCreationForm
 from .models import Answer, Choice, Exam, ExamAttempt, ExamQuestion, Question
 
 
-@login_required
+# Shows the question bank, so it is Instructor-only (a subset of QUESTION_BANK_ROLES):
+# administrators do not own courses and so have no questions to put in an exam.
+@role_required(User.Role.INSTRUCTOR)
 def create_exam(request):
-    if request.user.role != User.Role.INSTRUCTOR:
-        raise PermissionDenied
-
     if request.method == "POST":
         form = ExamCreationForm(
             request.POST,
