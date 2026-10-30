@@ -195,3 +195,57 @@ class AttemptAccessTest(TestCase):  # OEP-F-014, OEP-SR-004
             for name, (method, url) in {"start": start, **self.urls(attempt)}.items():
                 with self.subTest(role=user.role, page=name):
                     self.assertEqual(getattr(self.client, method)(url).status_code, 403)
+
+
+class ExamCreationQuestionBankTest(TestCase):  # OEP-F-014, OEP-SR-003 on the real page
+    """/exams/create/ is the only existing page that lists question-bank questions."""
+
+    def setUp(self):
+        self.url = reverse("exams:create")
+        self.teacher = make_user("teacher", User.Role.INSTRUCTOR)
+        other_teacher = make_user("other", User.Role.INSTRUCTOR)
+        own = Course.objects.create(name="Own", code="OWN1", instructor=self.teacher)
+        old = Course.objects.create(
+            name="Old", code="OLD1", instructor=self.teacher, is_active=False
+        )
+        other = Course.objects.create(name="Other", code="OTH1", instructor=other_teacher)
+        self.own_q = Question.objects.create(
+            course=own, text="Own active question?", created_by=self.teacher
+        )
+        Question.objects.create(course=old, text="Own old question?", created_by=self.teacher)
+        self.other_q = Question.objects.create(
+            course=other, text="Other teacher question?", created_by=other_teacher
+        )
+        self.own_course = own
+
+    def test_students_and_administrators_get_403(self):
+        for role in (User.Role.STUDENT, User.Role.ADMINISTRATOR):
+            self.client.force_login(make_user(role, role))
+            for method in ("get", "post"):
+                with self.subTest(role=role, method=method):
+                    self.assertEqual(getattr(self.client, method)(self.url).status_code, 403)
+
+    def test_anonymous_is_sent_to_login(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_instructor_sees_only_own_active_course_questions(self):
+        self.client.force_login(self.teacher)
+        response = self.client.get(self.url)
+        self.assertContains(response, "Own active question?")
+        self.assertNotContains(response, "Own old question?")
+        self.assertNotContains(response, "Other teacher question?")
+
+    def test_instructor_cannot_submit_another_instructors_question(self):
+        self.client.force_login(self.teacher)
+        start = timezone.now() + timedelta(days=1)
+        response = self.client.post(self.url, {
+            "course": self.own_course.pk, "title": "Quiz",
+            "start_time": start.strftime("%Y-%m-%dT%H:%M"),
+            "end_time": (start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M"),
+            "duration_minutes": 30, "questions": [self.own_q.pk, self.other_q.pk],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].has_error("questions"))
+        self.assertFalse(Exam.objects.exists())
