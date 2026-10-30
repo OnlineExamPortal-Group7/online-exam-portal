@@ -1,8 +1,14 @@
 from django.contrib.auth.decorators import login_required
+from django.db.models import Prefetch
 from django.shortcuts import redirect, render
+from django.utils import timezone
+
+from apps.administration.models import Enrollment
+from apps.exams.models import Exam, ExamAttempt
 
 from .models import User
 from .permissions import role_required
+
 
 DASHBOARD_BY_ROLE = {
     User.Role.STUDENT: "accounts:student_dashboard",
@@ -25,14 +31,50 @@ def dashboard(request):
 
 @role_required(User.Role.STUDENT)
 def student_dashboard(request):
-    return render(request, "accounts/dashboard.html", {"title": "Student dashboard"})
+    """Display published exams for courses in which the student is enrolled."""
+    exams = (
+        Exam.objects.filter(
+            course__enrollments__student=request.user,
+            status=Exam.Status.PUBLISHED,
+        )
+        .select_related("course")
+        .prefetch_related(
+            Prefetch(
+                "attempts",
+                queryset=ExamAttempt.objects.filter(
+                    student=request.user
+                ).order_by("-started_at"),
+                to_attr="student_attempts",
+            )
+        )
+        .order_by("start_time")
+        .distinct()
+    )
+
+    return render(
+        request,
+        "accounts/dashboard.html",
+        {
+            "title": "Student dashboard",
+            "exams": exams,
+            "now": timezone.now(),
+        },
+    )
 
 
 @role_required(User.Role.INSTRUCTOR)
 def instructor_dashboard(request):
-    return render(request, "accounts/dashboard.html", {"title": "Instructor dashboard"})
+    return render(
+        request,
+        "accounts/dashboard.html",
+        {"title": "Instructor dashboard"},
+    )
 
 
 @role_required(User.Role.ADMINISTRATOR)
 def admin_dashboard(request):
-    return render(request, "accounts/dashboard.html", {"title": "Administrator dashboard"})
+    return render(
+        request,
+        "accounts/dashboard.html",
+        {"title": "Administrator dashboard"},
+    )
