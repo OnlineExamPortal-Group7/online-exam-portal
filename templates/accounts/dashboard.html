@@ -1,9 +1,76 @@
 {% extends "base.html" %}
+
 {% block title %}{{ title }}{% endblock %}
+
 {% block content %}
 <h2>{{ title }}</h2>
-<p>Signed in as {{ user.email }}. Features for this role are added by later issues.</p>
-{% if user.role == "instructor" or user.role == "administrator" %}
-<p><a href="{% url 'exams:question_list' %}">Question bank</a></p>
+
+<p>Signed in as {{ user.email }}.</p>
+
+{% if user.role == "student" %}
+    <h3>Your available examinations</h3>
+
+    {% if exams %}
+        {% for exam in exams %}
+            <section>
+                <h4>{{ exam.title }}</h4>
+
+                <p>
+                    <strong>Course:</strong>
+                    {{ exam.course.name }} ({{ exam.course.code }})
+                </p>
+
+                {% if exam.description %}
+                    <p>{{ exam.description }}</p>
+                {% endif %}
+
+                <p>
+                    <strong>Starts:</strong> {{ exam.start_time }}
+                    <br>
+                    <strong>Ends:</strong> {{ exam.end_time }}
+                    <br>
+                    <strong>Duration:</strong> {{ exam.duration_minutes }} minutes
+                    <br>
+                    <strong>Total marks:</strong> {{ exam.total_marks }}
+                </p>
+
+                {% with attempt=exam.student_attempts.0 %}
+                    {% if attempt %}
+                        {% if attempt.status == "in_progress" and attempt.deadline_at > now %}
+                            <p>Status: In progress</p>
+                            <a href="{% url 'exams:take_attempt' attempt.id %}">
+                                Continue exam
+                            </a>
+                        {% elif attempt.status == "in_progress" %}
+                            <p>Status: Time expired</p>
+                        {% elif attempt.status == "timed_out" %}
+                            <p>Status: Timed out</p>
+                        {% else %}
+                            <p>Status: Submitted</p>
+                        {% endif %}
+                    {% elif now < exam.start_time %}
+                        <p>Status: Upcoming</p>
+                    {% elif now >= exam.end_time %}
+                        <p>Status: Exam window closed</p>
+                    {% else %}
+                        <p>Status: Available</p>
+                        <a href="{% url 'exams:start_attempt' exam.id %}">
+                            Start exam
+                        </a>
+                    {% endif %}
+                {% endwith %}
+            </section>
+            <hr>
+        {% endfor %}
+    {% else %}
+        <p>No published examinations are currently available for your enrolled courses.</p>
+    {% endif %}
 {% endif %}
+
+{% if user.role == "instructor" or user.role == "administrator" %}
+    <p>
+        <a href="{% url 'exams:question_list' %}">Question bank</a>
+    </p>
+{% endif %}
+
 {% endblock %}
