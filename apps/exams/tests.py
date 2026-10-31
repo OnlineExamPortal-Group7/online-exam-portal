@@ -230,6 +230,63 @@ class ServerAuthoritativeTimerTests(ExamCreationTests):
         self.assertContains(response, f'value="{self.choice.pk}"')
         self.assertContains(response, "checked")
 
+    def test_manual_submission_marks_attempt_as_submitted(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.SUBMITTED)
+        self.assertIsNotNone(attempt.submitted_at)
+
+    def test_submitted_attempt_cannot_save_or_change_answers(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.question1,
+            selected_choice=self.choice,
+        )
+        attempt.status = ExamAttempt.Status.SUBMITTED
+        attempt.submitted_at = timezone.now()
+        attempt.save(update_fields=["status", "submitted_at"])
+
+        self.client.force_login(self.student)
+
+        response = self.client.post(
+            reverse("exams:save_answer", args=[attempt.pk]),
+            {
+                "question_id": self.question1.pk,
+                "choice_id": self.choice2.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        answer = Answer.objects.get(
+            attempt=attempt,
+            question=self.question1,
+        )
+        self.assertEqual(answer.selected_choice_id, self.choice.pk)
+
+    def test_submit_confirmation_is_present_on_exam_page(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Are you sure you want to submit the exam?",
+        )
+
     def test_expired_attempt_cannot_save_answer(self):
         attempt = self.create_attempt(deadline=timezone.now() - timedelta(seconds=1))
         self.client.force_login(self.student)
