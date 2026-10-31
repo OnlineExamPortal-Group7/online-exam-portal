@@ -1,116 +1,381 @@
+
 {% extends "base.html" %}
 
 {% block title %}{{ attempt.exam.title }} | Exam{% endblock %}
 
 {% block content %}
 <style>
-  .exam-layout { max-width: 950px; margin: 0 auto; }
-  .exam-top { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; }
-  .exam-timer { position:sticky; top:0; z-index:5; background:#fff3cd; color:#664d03; padding:.75rem 1rem; border-radius:8px; font-weight:700; }
-  .question-panel { border:1px solid #d8dee8; border-radius:10px; padding:1.25rem; margin:1rem 0; }
-  .question-nav { display:flex; flex-wrap:wrap; gap:.5rem; margin:1rem 0; }
-  .question-nav button { min-width:40px; padding:.5rem; border:1px solid #777; border-radius:6px; background:#fff; cursor:pointer; }
-  .question-nav button.active { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
-  .choice-row { display:block; padding:.65rem; margin:.4rem 0; border:1px solid #ddd; border-radius:6px; }
-  .exam-actions { display:flex; justify-content:space-between; gap:.75rem; flex-wrap:wrap; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
+  .exam-layout {
+    max-width: 950px;
+    margin: 0 auto;
+  }
+
+  .exam-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .exam-timer {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff3cd;
+    color: #664d03;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-weight: 700;
+  }
+
+  .exam-timer.expired {
+    background: #f8d7da;
+    color: #842029;
+  }
+
+  .question-panel {
+    border: 1px solid #d8dee8;
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin: 1rem 0;
+  }
+
+  .question-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .question-nav button {
+    min-width: 40px;
+    padding: 0.5rem;
+    border: 1px solid #777;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .question-nav button.active {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+
+  .choice-row {
+    display: block;
+    padding: 0.65rem;
+    margin: 0.4rem 0;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+  }
+
+  .exam-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #timeout-message {
+    display: none;
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #f8d7da;
+    color: #842029;
+    border-radius: 8px;
+  }
 </style>
 
 <div class="exam-layout">
+
   <div class="exam-top">
     <div>
       <h1>{{ attempt.exam.title }}</h1>
-      {% if attempt.exam.description %}<p>{{ attempt.exam.description }}</p>{% endif %}
+
+      {% if attempt.exam.description %}
+        <p>{{ attempt.exam.description }}</p>
+      {% endif %}
     </div>
-    <div class="exam-timer" role="timer" aria-live="polite">
-      Time remaining: <span id="countdown">{{ remaining_seconds }}</span>
+
+    <div class="exam-timer" id="timer-container"
+         role="timer" aria-live="polite">
+      Time remaining:
+      <span id="countdown">{{ remaining_seconds }}</span>
     </div>
   </div>
 
+  <div id="timeout-message" role="alert">
+    Your exam time has expired. Your attempt is being submitted automatically.
+    Please wait...
+  </div>
+
   {% if current_question %}
-    <p>Question {{ question_index|add:1 }} of {{ question_count }}</p>
+
+    <p>
+      Question {{ question_index|add:1 }} of {{ question_count }}
+    </p>
 
     <nav class="question-nav" aria-label="Question navigation">
+
       {% for question in questions %}
-        <button type="button"
-                class="{% if forloop.counter0 == question_index %}active{% endif %}"
-                aria-label="Go to question {{ forloop.counter }}"
-                aria-current="{% if forloop.counter0 == question_index %}step{% endif %}"
-                onclick="navigateToQuestion({{ forloop.counter0 }})">
+
+        <button
+          type="button"
+          class="{% if forloop.counter0 == question_index %}active{% endif %}"
+          aria-label="Go to question {{ forloop.counter }}"
+          aria-current="{% if forloop.counter0 == question_index %}step{% endif %}"
+          onclick="navigateToQuestion({{ forloop.counter0 }})">
+
           {{ forloop.counter }}
+
         </button>
+
       {% endfor %}
+
     </nav>
 
-    <form id="answer-form" method="post" action="{% url 'exams:save_answer' attempt.pk %}">
+    <form
+      id="answer-form"
+      method="post"
+      action="{% url 'exams:save_answer' attempt.pk %}">
+
       {% csrf_token %}
-      <input type="hidden" name="question_id" value="{{ current_question.pk }}">
-      <input type="hidden" name="choice_id" id="choice-id" value="{{ current_question.selected_choice_id|default_if_none:'' }}">
-      <input type="hidden" name="next_question" id="next-question" value="{{ question_index }}">
+
+      <input
+        type="hidden"
+        name="question_id"
+        value="{{ current_question.pk }}">
+
+      <input
+        type="hidden"
+        name="choice_id"
+        id="choice-id"
+        value="{{ current_question.selected_choice_id|default_if_none:'' }}">
+
+      <input
+        type="hidden"
+        name="next_question"
+        id="next-question"
+        value="{{ question_index }}">
 
       <section class="question-panel">
+
         <h2>{{ current_question.text }}</h2>
+
         {% for choice in current_question.choices.all %}
+
           <label class="choice-row">
-            <input type="radio" name="visible_choice" value="{{ choice.pk }}"
-                   {% if current_question.selected_choice_id == choice.pk %}checked{% endif %}
-                   onchange="document.getElementById('choice-id').value=this.value">
+
+            <input
+              type="radio"
+              name="visible_choice"
+              value="{{ choice.pk }}"
+              {% if current_question.selected_choice_id == choice.pk %}
+                checked
+              {% endif %}
+              onchange="updateSelectedChoice(this.value)">
+
             {{ choice.text }}
+
           </label>
+
         {% empty %}
+
           <p>No answer choices are available for this question.</p>
+
         {% endfor %}
+
       </section>
 
       <div class="exam-actions">
-        <button type="button" onclick="navigateToQuestion({{ question_index|add:'-1' }})"
-                {% if question_index == 0 %}disabled{% endif %}>Previous</button>
+
+        <button
+          type="button"
+          id="previous-button"
+          onclick="navigateToQuestion({{ question_index|add:'-1' }})"
+          {% if question_index == 0 %}disabled{% endif %}>
+
+          Previous
+
+        </button>
+
         {% if question_index < question_count|add:'-1' %}
-          <button type="button" onclick="navigateToQuestion({{ question_index|add:'1' }})">Save &amp; Next</button>
+
+          <button
+            type="button"
+            id="next-button"
+            onclick="navigateToQuestion({{ question_index|add:'1' }})">
+
+            Save &amp; Next
+
+          </button>
+
         {% else %}
-          <button type="button" onclick="navigateToQuestion({{ question_index }})">Save Answer</button>
+
+          <button
+            type="button"
+            id="save-button"
+            onclick="navigateToQuestion({{ question_index }})">
+
+            Save Answer
+
+          </button>
+
         {% endif %}
+
       </div>
+
     </form>
+
   {% else %}
+
     <p>This exam does not have any questions yet.</p>
+
   {% endif %}
 
-  <form method="post" action="{% url 'exams:submit_attempt' attempt.pk %}" id="submit-form">
+  <form
+    method="post"
+    action="{% url 'exams:submit_attempt' attempt.pk %}"
+    id="submit-form">
+
     {% csrf_token %}
-    <button type="submit" onclick="return confirm('Are you sure you want to submit the exam?')">
+
+    <button type="submit" id="submit-button">
+
       Submit exam
+
     </button>
+
   </form>
+
 </div>
 
 <script>
   let secondsRemaining = {{ remaining_seconds|default:0 }};
-  const countdownElement = document.getElementById("countdown");
 
-  function updateCountdown() {
-    if (secondsRemaining <= 0) {
-      countdownElement.textContent = "00:00";
-      document.getElementById("submit-form").submit();
+  let submissionStarted = false;
+
+  const countdownElement = document.getElementById("countdown");
+  const timerContainer = document.getElementById("timer-container");
+  const timeoutMessage = document.getElementById("timeout-message");
+
+  const answerForm = document.getElementById("answer-form");
+  const submitForm = document.getElementById("submit-form");
+
+  const submitButton = document.getElementById("submit-button");
+
+  function updateSelectedChoice(choiceId) {
+    document.getElementById("choice-id").value = choiceId;
+  }
+
+  function disableExamControls() {
+    submissionStarted = true;
+
+    if (answerForm) {
+      answerForm.querySelectorAll("button, input").forEach(function(element) {
+        element.disabled = true;
+      });
+    }
+
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+  }
+
+  function submitAutomatically() {
+    if (submissionStarted) {
       return;
     }
+
+    disableExamControls();
+
+    countdownElement.textContent = "00:00";
+    timerContainer.classList.add("expired");
+
+    timeoutMessage.style.display = "block";
+
+    // Submit directly without asking for manual confirmation.
+    // The server validates the deadline and updates the attempt status.
+    submitForm.submit();
+  }
+
+  function updateCountdown() {
+    if (submissionStarted) {
+      return;
+    }
+
+    if (secondsRemaining <= 0) {
+      submitAutomatically();
+      return;
+    }
+
     const minutes = Math.floor(secondsRemaining / 60);
     const seconds = secondsRemaining % 60;
+
     countdownElement.textContent =
-      String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+      String(minutes).padStart(2, "0") +
+      ":" +
+      String(seconds).padStart(2, "0");
+
     secondsRemaining -= 1;
   }
 
   function navigateToQuestion(index) {
-    const form = document.getElementById("answer-form");
-    if (!form) return;
+    if (submissionStarted || !answerForm) {
+      return;
+    }
+
     const count = {{ question_count|default:0 }};
+
     const target = Math.max(0, Math.min(index, count - 1));
+
     document.getElementById("next-question").value = target;
-    form.requestSubmit();
+
+    answerForm.requestSubmit();
   }
 
+  // Manual submission requires confirmation.
+  submitForm.addEventListener("submit", function(event) {
+
+    if (submissionStarted) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to submit the exam?"
+    );
+
+    if (!confirmed) {
+      event.preventDefault();
+      return;
+    }
+
+    disableExamControls();
+
+  });
+
+  // Start countdown immediately.
   updateCountdown();
-  setInterval(updateCountdown, 1000);
+
+  // Update the timer every second.
+  const countdownInterval = setInterval(function() {
+
+    if (submissionStarted) {
+      clearInterval(countdownInterval);
+      return;
+    }
+
+    updateCountdown();
+
+  }, 1000);
+
 </script>
+
 {% endblock %}
