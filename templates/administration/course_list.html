@@ -19,6 +19,17 @@
       <td>
         <a href="{% url 'administration:course_detail' course.pk %}">Roster</a>
         <a href="{% url 'administration:course_edit' course.pk %}">Edit</a>
+        {% if course.is_active %}
+        <form method="post" action="{% url 'administration:course_deactivate' course.pk %}">
+          {% csrf_token %}
+          <button type="submit">Deactivate</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'administration:course_reactivate' course.pk %}">
+          {% csrf_token %}
+          <button type="submit">Reactivate</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
     {% empty %}

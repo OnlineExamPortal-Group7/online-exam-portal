@@ -16,4 +16,14 @@ urlpatterns = [
     path("courses/<int:pk>/edit/", views.CourseUpdateView.as_view(), name="course_edit"),
     path("courses/<int:pk>/enrol/", views.CourseEnrolView.as_view(), name="course_enrol"),
     path("courses/<int:pk>/unenrol/", views.CourseUnenrolView.as_view(), name="course_unenrol"),
+    path(
+        "courses/<int:pk>/deactivate/",
+        views.CourseDeactivateView.as_view(),
+        name="course_deactivate",
+    ),
+    path(
+        "courses/<int:pk>/reactivate/",
+        views.CourseReactivateView.as_view(),
+        name="course_reactivate",
+    ),
 ]

@@ -8,7 +8,9 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.exams.access import questions_for
+from apps.exams.forms import ExamCreationForm
 from apps.exams.models import Question
+from apps.exams.question_import import importable_courses
 
 from . import services
 from .models import Course, Enrollment
@@ -759,6 +761,63 @@ class CourseRosterViewTest(TestCase):  # OEP-F-042 / AC-042
                 response = self.client.post(self.url("course_unenrol"), {"student": self.alice.pk})
                 self.assertEqual(response.status_code, 403)
         self.assertEqual(self.roster(), ["alice"])
+
+
+class CourseActivationViewTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        Enrollment.objects.create(student=make_user("alice"), course=self.course)
+        self.client.login(username=self.admin.email, password=PASSWORD)
+
+    def url(self, name, pk=None):
+        return reverse(f"administration:{name}", args=[pk or self.course.pk])
+
+    def test_deactivate_and_reactivate_keep_enrolments(self):
+        list_url = reverse("administration:course_list")
+        response = self.client.post(self.url("course_deactivate"), follow=True)
+        self.assertRedirects(response, list_url)
+        self.assertContains(response, "Deactivated CS101.")
+        self.assertContains(response, self.url("course_reactivate"))
+        self.course.refresh_from_db()
+        self.assertFalse(self.course.is_active)
+
+        response = self.client.post(self.url("course_reactivate"), follow=True)
+        self.assertRedirects(response, list_url)
+        self.assertContains(response, "Reactivated CS101.")
+        self.assertContains(response, self.url("course_deactivate"))
+        self.course.refresh_from_db()
+        self.assertTrue(self.course.is_active)
+        self.assertEqual(self.course.enrollments.count(), 1)
+
+    def test_deactivated_course_leaves_exam_and_import_course_choices(self):
+        def choices():
+            form = ExamCreationForm(instructor=self.teacher)
+            return list(form.fields["course"].queryset), list(importable_courses(self.teacher))
+
+        self.assertEqual(choices(), ([self.course], [self.course]))
+        self.client.post(self.url("course_deactivate"))
+        self.assertEqual(choices(), ([], []))
+        self.client.post(self.url("course_reactivate"))
+        self.assertEqual(choices(), ([self.course], [self.course]))
+
+    def test_actions_are_post_only_and_unknown_course_is_404(self):
+        for name in ("course_deactivate", "course_reactivate"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(self.url(name)).status_code, 405)
+                self.assertEqual(self.client.post(self.url(name, 999)).status_code, 404)
+
+    def test_other_roles_get_403_and_nothing_changes(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+            with self.subTest(role=role):
+                response = self.client.post(self.url("course_deactivate"))
+                self.assertEqual(response.status_code, 403)
+        self.course.refresh_from_db()
+        self.assertTrue(self.course.is_active)
 
 
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004

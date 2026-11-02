@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.generic import CreateView, DetailView, FormView, ListView, UpdateView
 
@@ -179,10 +179,13 @@ class CourseActionView(RoleRequiredMixin, View):
             messages.error(request, " ".join(error.messages))
         else:
             messages.success(request, message)
-        return redirect("administration:course_detail", pk=course.pk)
+        return redirect(self.redirect_to(course))
 
     def perform(self, request, course):
         raise NotImplementedError
+
+    def redirect_to(self, course):
+        return reverse("administration:course_detail", args=[course.pk])
 
 
 class CourseEnrolView(CourseActionView):
@@ -203,3 +206,18 @@ class CourseUnenrolView(CourseActionView):
         student = form.cleaned_data["student"]
         services.unenrol_student(request.user, course, student)
         return f"Unenrolled {student.username} from {course.code}."
+
+
+class CourseDeactivateView(CourseActionView):
+    def perform(self, request, course):
+        services.set_course_active(request.user, course, False)
+        return f"Deactivated {course.code}."
+
+    def redirect_to(self, course):
+        return reverse("administration:course_list")
+
+
+class CourseReactivateView(CourseDeactivateView):
+    def perform(self, request, course):
+        services.set_course_active(request.user, course, True)
+        return f"Reactivated {course.code}."
