@@ -7,8 +7,11 @@ from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from apps.accounts.models import User
+from apps.exams.access import questions_for
+from apps.exams.models import Question
 
 from . import services
+from .models import Course, Enrollment
 
 PASSWORD = "Str0ng-pass-123"
 
@@ -120,6 +123,212 @@ class UserServiceTest(TestCase):  # OEP-F-004
         hook.assert_any_call(
             "role_changed", self.admin, self.student,
             old_role=User.Role.STUDENT, new_role=User.Role.INSTRUCTOR,
+        )
+
+
+class CourseServiceTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+
+    def create(self, **overrides):
+        data = {"code": "MA101", "name": "Maths", "instructor": self.teacher}
+        data.update(overrides)
+        return services.create_course(self.admin, **data)
+
+    def update(self, **overrides):
+        data = {"code": "CS101", "name": "Programming", "instructor": self.teacher}
+        data.update(overrides)
+        return services.update_course(self.admin, self.course, **data)
+
+    def test_create_course(self):
+        course = self.create(code=" MA101 ", description="Algebra")
+        course.refresh_from_db()
+        self.assertEqual(course.code, "MA101")
+        self.assertEqual(course.instructor, self.teacher)
+        self.assertEqual(course.description, "Algebra")
+        self.assertTrue(course.is_active)
+
+    def test_course_code_must_be_unique_ignoring_case(self):
+        with self.assertRaisesMessage(ValidationError, "already exists"):
+            self.create(code="cs101")
+        self.assertEqual(Course.objects.count(), 1)
+
+    def test_instructor_must_be_an_active_instructor(self):
+        inactive = make_user("gone", role=User.Role.INSTRUCTOR, is_active=False)
+        for user in (make_user("student"), self.admin, inactive):
+            with self.subTest(user=user.username):
+                with self.assertRaisesMessage(ValidationError, "not an active instructor"):
+                    self.create(instructor=user)
+        self.assertEqual(Course.objects.count(), 1)
+
+    def test_update_course(self):
+        self.update(code="CS102", name="Programming II", description="Next part")
+        self.course.refresh_from_db()
+        self.assertEqual(
+            (self.course.code, self.course.name, self.course.description),
+            ("CS102", "Programming II", "Next part"),
+        )
+
+    def test_update_keeps_own_code_but_rejects_another_courses(self):
+        self.update(code="cs101")
+        Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        with self.assertRaisesMessage(ValidationError, "already exists"):
+            self.update(code="ma101")
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.code, "cs101")
+
+    def test_reassigning_instructor_moves_question_bank_access(self):
+        new_teacher = make_user("newteacher", role=User.Role.INSTRUCTOR)
+        question = Question.objects.create(
+            course=self.course, text="What is 2 + 2?", created_by=self.teacher
+        )
+        self.update(instructor=new_teacher)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.instructor, new_teacher)
+        self.assertIn(question, questions_for(new_teacher))
+        self.assertNotIn(question, questions_for(self.teacher))
+
+    def test_cannot_reassign_to_a_non_instructor(self):
+        with self.assertRaisesMessage(ValidationError, "not an active instructor"):
+            self.update(instructor=make_user("student"))
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.instructor, self.teacher)
+
+    def test_editing_keeps_a_since_deactivated_instructor(self):
+        self.teacher.is_active = False
+        self.teacher.save()
+        self.update(name="Renamed")
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Renamed")
+
+    def test_deactivate_and_reactivate_keep_enrolments(self):
+        Enrollment.objects.create(student=make_user("student"), course=self.course)
+        services.set_course_active(self.admin, self.course, False)
+        self.course.refresh_from_db()
+        self.assertFalse(self.course.is_active)
+        services.set_course_active(self.admin, self.course, True)
+        self.course.refresh_from_db()
+        self.assertTrue(self.course.is_active)
+        self.assertEqual(self.course.enrollments.count(), 1)
+
+    def test_only_administrators_can_change_courses(self):  # OEP-SR-003
+        calls = [
+            lambda: services.create_course(
+                self.teacher, code="X1", name="X", instructor=self.teacher
+            ),
+            lambda: services.update_course(
+                self.teacher, self.course, code="CS101", name="Hacked", instructor=self.teacher
+            ),
+            lambda: services.set_course_active(self.teacher, self.course, False),
+        ]
+        for call in calls:
+            with self.assertRaises(PermissionDenied):
+                call()
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Programming")
+        self.assertTrue(self.course.is_active)
+        self.assertFalse(Course.objects.filter(code="X1").exists())
+
+    @mock.patch.object(services, "audit_hook")
+    def test_audit_hook_is_called_for_each_change(self, hook):
+        new_teacher = make_user("newteacher", role=User.Role.INSTRUCTOR)
+        course = self.create()
+        self.update(instructor=new_teacher)
+        services.set_course_active(self.admin, self.course, False)
+        services.set_course_active(self.admin, self.course, True)
+        hook.assert_any_call("course_created", self.admin, course, instructor=self.teacher.pk)
+        hook.assert_any_call(
+            "course_updated", self.admin, self.course,
+            old_instructor=self.teacher.pk, new_instructor=new_teacher.pk,
+        )
+        hook.assert_any_call("course_deactivated", self.admin, self.course)
+        hook.assert_any_call("course_reactivated", self.admin, self.course)
+
+    @mock.patch.object(services, "audit_hook")
+    def test_refused_change_is_not_audited(self, hook):
+        with self.assertRaises(ValidationError):
+            self.create(code="CS101")
+        hook.assert_not_called()
+
+
+class EnrolmentServiceTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        self.alice = make_user("alice")
+        self.bob = make_user("bob")
+
+    def roster(self):
+        return list(
+            User.objects.filter(course_enrollments__course=self.course).order_by("username")
+        )
+
+    def test_enrol_students(self):
+        enrolled = services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        self.assertEqual(enrolled, [self.alice, self.bob])
+        self.assertEqual(self.roster(), [self.alice, self.bob])
+
+    def test_already_enrolled_students_are_skipped(self):
+        services.enrol_students(self.admin, self.course, [self.alice])
+        enrolled = services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        self.assertEqual(enrolled, [self.bob])
+        self.assertEqual(Enrollment.objects.count(), 2)
+
+    def test_only_active_students_can_be_enrolled_and_nobody_is_enrolled_on_error(self):
+        inactive = make_user("gone", is_active=False)
+        for user in (self.teacher, self.admin, inactive):
+            with self.subTest(user=user.username):
+                with self.assertRaisesMessage(ValidationError, "not an active student"):
+                    services.enrol_students(self.admin, self.course, [self.alice, user])
+        self.assertEqual(self.roster(), [])
+
+    def test_cannot_enrol_in_a_deactivated_course(self):
+        services.set_course_active(self.admin, self.course, False)
+        with self.assertRaisesMessage(ValidationError, "deactivated"):
+            services.enrol_students(self.admin, self.course, [self.alice])
+        self.assertEqual(self.roster(), [])
+
+    def test_unenrol_student(self):
+        services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        services.unenrol_student(self.admin, self.course, self.alice)
+        self.assertEqual(self.roster(), [self.bob])
+
+    def test_unenrolling_a_student_who_is_not_enrolled_is_refused(self):
+        with self.assertRaisesMessage(ValidationError, "not enrolled"):
+            services.unenrol_student(self.admin, self.course, self.alice)
+
+    def test_roster_is_per_course(self):
+        other = Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        services.enrol_students(self.admin, self.course, [self.alice])
+        services.enrol_students(self.admin, other, [self.bob])
+        self.assertEqual(self.roster(), [self.alice])
+
+    def test_only_administrators_can_change_enrolments(self):  # OEP-SR-003
+        Enrollment.objects.create(student=self.bob, course=self.course)
+        with self.assertRaises(PermissionDenied):
+            services.enrol_students(self.teacher, self.course, [self.alice])
+        with self.assertRaises(PermissionDenied):
+            services.unenrol_student(self.alice, self.course, self.bob)
+        self.assertEqual(self.roster(), [self.bob])
+
+    @mock.patch.object(services, "audit_hook")
+    def test_audit_hook_is_called_for_each_enrolment_change(self, hook):
+        Enrollment.objects.create(student=self.alice, course=self.course)
+        services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        services.unenrol_student(self.admin, self.course, self.alice)
+        self.assertEqual(
+            hook.call_args_list,
+            [
+                mock.call("student_enrolled", self.admin, self.bob, course=self.course.pk),
+                mock.call("student_unenrolled", self.admin, self.alice, course=self.course.pk),
+            ],
         )
 
 
