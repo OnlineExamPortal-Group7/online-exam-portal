@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Manage courses{% endblock %}
+{% block content %}
+<h2>Manage courses</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<p><a href="{% url 'administration:course_create' %}">Create course</a></p>
+<table>
+  <thead>
+    <tr><th>Code</th><th>Name</th><th>Instructor</th><th>Students</th><th>Status</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {% for course in courses %}
+    <tr>
+      <td>{{ course.code }}</td>
+      <td>{{ course.name }}</td>
+      <td>{{ course.instructor.get_full_name|default:course.instructor.username }}</td>
+      <td>{{ course.student_count }}</td>
+      <td>{{ course.is_active|yesno:"Active,Deactivated" }}</td>
+      <td><a href="{% url 'administration:course_edit' course.pk %}">Edit</a></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No courses yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
