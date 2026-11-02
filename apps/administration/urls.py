@@ -12,5 +12,8 @@ urlpatterns = [
     path("users/<int:pk>/role/", views.UserRoleChangeView.as_view(), name="user_role"),
     path("courses/", views.CourseListView.as_view(), name="course_list"),
     path("courses/new/", views.CourseCreateView.as_view(), name="course_create"),
+    path("courses/<int:pk>/", views.CourseDetailView.as_view(), name="course_detail"),
     path("courses/<int:pk>/edit/", views.CourseUpdateView.as_view(), name="course_edit"),
+    path("courses/<int:pk>/enrol/", views.CourseEnrolView.as_view(), name="course_enrol"),
+    path("courses/<int:pk>/unenrol/", views.CourseUnenrolView.as_view(), name="course_unenrol"),
 ]

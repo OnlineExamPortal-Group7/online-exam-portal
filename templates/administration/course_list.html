@@ -16,7 +16,10 @@
       <td>{{ course.instructor.get_full_name|default:course.instructor.username }}</td>
       <td>{{ course.student_count }}</td>
       <td>{{ course.is_active|yesno:"Active,Deactivated" }}</td>
-      <td><a href="{% url 'administration:course_edit' course.pk %}">Edit</a></td>
+      <td>
+        <a href="{% url 'administration:course_detail' course.pk %}">Roster</a>
+        <a href="{% url 'administration:course_edit' course.pk %}">Edit</a>
+      </td>
     </tr>
     {% empty %}
     <tr><td colspan="6">No courses yet.</td></tr>

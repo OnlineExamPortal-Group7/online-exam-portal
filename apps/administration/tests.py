@@ -530,6 +530,7 @@ class CourseListViewTest(TestCase):  # OEP-F-042, OEP-SR-003
         self.assertContains(response, "Tina Teach")
         self.assertContains(response, "Deactivated")
         self.assertContains(response, reverse("administration:course_edit", args=[course.pk]))
+        self.assertContains(response, reverse("administration:course_detail", args=[course.pk]))
 
     def test_other_roles_get_403(self):
         for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
@@ -647,6 +648,117 @@ class CourseFormViewTest(TestCase):  # OEP-F-042
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse("accounts:login"), response["Location"])
         self.assertEqual(Course.objects.count(), 1)
+
+
+class CourseRosterViewTest(TestCase):  # OEP-F-042 / AC-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        self.alice = make_user("alice", first_name="Alice", last_name="Able")
+        self.bob = make_user("bob")
+        self.carol = make_user("carol")
+        Enrollment.objects.create(student=self.alice, course=self.course)
+        self.client.login(username=self.admin.email, password=PASSWORD)
+
+    def url(self, name):
+        return reverse(f"administration:{name}", args=[self.course.pk])
+
+    def roster(self):
+        return sorted(e.student.username for e in self.course.enrollments.all())
+
+    def test_roster_lists_exactly_the_enrolled_students(self):
+        other = Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        Enrollment.objects.create(student=self.bob, course=other)
+        response = self.client.get(self.url("course_detail"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [e.student for e in response.context["enrolments"]], [self.alice]
+        )
+        self.assertContains(response, "Enrolled students (1)")
+        self.assertContains(response, "Alice Able")
+
+    def test_enrol_choices_are_active_students_not_yet_enrolled(self):
+        make_user("gone", is_active=False)
+        response = self.client.get(self.url("course_detail"))
+        choices = response.context["enrol_form"].fields["students"].queryset
+        self.assertEqual(list(choices), [self.bob, self.carol])
+
+    def test_enrol_students(self):
+        response = self.client.post(
+            self.url("course_enrol"), {"students": [self.bob.pk, self.carol.pk]}, follow=True
+        )
+        self.assertRedirects(response, self.url("course_detail"))
+        self.assertContains(response, "Enrolled bob, carol in CS101.")
+        self.assertEqual(self.roster(), ["alice", "bob", "carol"])
+
+    def test_invalid_enrolment_shows_error(self):
+        for data in ({}, {"students": [self.alice.pk]}, {"students": [self.teacher.pk]}):
+            with self.subTest(data=data):
+                response = self.client.post(self.url("course_enrol"), data, follow=True)
+                self.assertContains(response, "Choose active students")
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_deactivated_course_refuses_enrolment(self):
+        services.set_course_active(self.admin, self.course, False)
+        response = self.client.get(self.url("course_detail"))
+        self.assertContains(response, "Reactivate it to enrol students.")
+        self.assertNotContains(response, self.url("course_enrol"))
+        response = self.client.post(
+            self.url("course_enrol"), {"students": [self.bob.pk]}, follow=True
+        )
+        self.assertContains(response, "deactivated")
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_unenrol_student(self):
+        response = self.client.get(self.url("course_detail"))
+        self.assertContains(response, self.url("course_unenrol"))
+        response = self.client.post(
+            self.url("course_unenrol"), {"student": self.alice.pk}, follow=True
+        )
+        self.assertRedirects(response, self.url("course_detail"))
+        self.assertContains(response, "Unenrolled alice from CS101.")
+        self.assertEqual(self.roster(), [])
+        self.assertContains(response, "No students enrolled yet.")
+
+    def test_invalid_unenrolment_shows_error(self):
+        response = self.client.post(self.url("course_unenrol"), {}, follow=True)
+        self.assertContains(response, "Choose a student to unenrol.")
+        response = self.client.post(
+            self.url("course_unenrol"), {"student": self.bob.pk}, follow=True
+        )
+        self.assertContains(response, "bob is not enrolled in CS101.")
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_actions_are_post_only_and_need_csrf(self):  # OEP-SR-005
+        for name in ("course_enrol", "course_unenrol"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(self.url(name)).status_code, 405)
+        client = Client(enforce_csrf_checks=True)
+        client.login(username=self.admin.email, password=PASSWORD)
+        response = client.post(self.url("course_unenrol"), {"student": self.alice.pk})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_unknown_course_is_404(self):
+        for name in ("course_detail", "course_enrol"):
+            with self.subTest(name=name):
+                url = reverse(f"administration:{name}", args=[999])
+                method = self.client.get if name == "course_detail" else self.client.post
+                self.assertEqual(method(url).status_code, 404)
+
+    def test_other_roles_get_403_and_nothing_changes(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+            with self.subTest(role=role):
+                self.assertEqual(self.client.get(self.url("course_detail")).status_code, 403)
+                response = self.client.post(self.url("course_enrol"), {"students": [self.bob.pk]})
+                self.assertEqual(response.status_code, 403)
+                response = self.client.post(self.url("course_unenrol"), {"student": self.alice.pk})
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.roster(), ["alice"])
 
 
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004

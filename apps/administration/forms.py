@@ -41,3 +41,27 @@ class CourseForm(forms.ModelForm):
             # Keep the current instructor selectable even if they were deactivated later.
             allowed |= Q(pk=self.instance.instructor_id)
         self.fields["instructor"].queryset = User.objects.filter(allowed).order_by("username")
+
+
+def _student_label(student):
+    return f"{student.username} ({student.get_full_name() or student.email})"
+
+
+class EnrolForm(forms.Form):
+    """Active students not yet enrolled in `course` (OEP-F-042)."""
+
+    students = forms.ModelMultipleChoiceField(queryset=User.objects.none())
+
+    def __init__(self, *args, course, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields["students"]
+        field.queryset = (
+            User.objects.filter(role=User.Role.STUDENT, is_active=True)
+            .exclude(course_enrollments__course=course)
+            .order_by("username")
+        )
+        field.label_from_instance = _student_label
+
+
+class UnenrolForm(forms.Form):
+    student = forms.ModelChoiceField(queryset=User.objects.all())

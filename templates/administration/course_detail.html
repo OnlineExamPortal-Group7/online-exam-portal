@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ course.code }} roster{% endblock %}
+{% block content %}
+<h2>{{ course.code }} - {{ course.name }}</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<p>
+  <strong>Instructor:</strong>
+  {{ course.instructor.get_full_name|default:course.instructor.username }}
+  <br>
+  <strong>Status:</strong> {{ course.is_active|yesno:"Active,Deactivated" }}
+</p>
+{% if course.description %}<p>{{ course.description }}</p>{% endif %}
+
+<h3>Enrolled students ({{ enrolments|length }})</h3>
+<table>
+  <thead>
+    <tr><th>Username</th><th>Name</th><th>Email</th><th>Account</th><th>Enrolled</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {% for enrolment in enrolments %}
+    <tr>
+      <td>{{ enrolment.student.username }}</td>
+      <td>{{ enrolment.student.get_full_name }}</td>
+      <td>{{ enrolment.student.email }}</td>
+      <td>{{ enrolment.student.is_active|yesno:"Active,Deactivated" }}</td>
+      <td>{{ enrolment.enrolled_at }}</td>
+      <td>
+        <form method="post" action="{% url 'administration:course_unenrol' course.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="student" value="{{ enrolment.student.pk }}">
+          <button type="submit">Unenrol</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No students enrolled yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Enrol students</h3>
+{% if course.is_active %}
+<form method="post" action="{% url 'administration:course_enrol' course.pk %}">
+  {% csrf_token %}
+  {{ enrol_form.as_p }}
+  <button type="submit">Enrol</button>
+</form>
+{% else %}
+<p>This course is deactivated. Reactivate it to enrol students.</p>
+{% endif %}
+<p>
+  <a href="{% url 'administration:course_edit' course.pk %}">Edit course</a>
+  <a href="{% url 'administration:course_list' %}">Back to courses</a>
+</p>
+{% endblock %}
