@@ -1,4 +1,3 @@
-
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -8,6 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.administration.models import Course, Enrollment
+from apps.results.models import Result
 
 from .models import Answer, Choice, Exam, ExamAttempt, ExamQuestion, Question
 
@@ -514,3 +514,95 @@ class ServerAuthoritativeTimerTests(ExamCreationTests):
             ExamAttempt.Status.TIMED_OUT,
         )
         self.assertEqual(attempt.submitted_at, deadline)
+
+    def test_correct_answers_receive_question_marks(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.question1,
+            selected_choice=self.choice,
+        )
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.question2,
+            selected_choice=self.choice2,
+        )
+
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 302)
+        result = Result.objects.get(attempt=attempt)
+        self.assertEqual(result.score, 2)
+        self.assertEqual(result.total_marks, 5)
+        self.assertEqual(result.percentage, 40.0)
+
+    def test_incorrect_and_unanswered_answers_receive_zero(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.question2,
+            selected_choice=self.choice2,
+        )
+
+        self.client.force_login(self.student)
+        self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk])
+        )
+
+        result = Result.objects.get(attempt=attempt)
+        self.assertEqual(result.score, 0)
+        self.assertEqual(result.total_marks, 5)
+
+    def test_unanswered_exam_creates_zero_score_result(self):
+        attempt = self.create_attempt()
+
+        self.client.force_login(self.student)
+        self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk])
+        )
+
+        result = Result.objects.get(attempt=attempt)
+        self.assertEqual(result.score, 0)
+        self.assertEqual(result.total_marks, 5)
+
+    def test_result_is_not_duplicated_for_an_attempt(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.question1,
+            selected_choice=self.choice,
+        )
+
+        # Evaluate twice to verify the one-to-one result remains unique.
+        from apps.exams.views import evaluate_attempt
+
+        first_result = evaluate_attempt(attempt)
+        second_result = evaluate_attempt(attempt)
+
+        self.assertEqual(first_result.pk, second_result.pk)
+        self.assertEqual(Result.objects.filter(attempt=attempt).count(), 1)
+
+    def test_timed_out_attempt_is_evaluated(self):
+        deadline = timezone.now() - timedelta(seconds=1)
+        attempt = self.create_attempt(deadline=deadline)
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.question1,
+            selected_choice=self.choice,
+        )
+
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk])
+        )
+
+        self.assertEqual(response.status_code, 302)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.TIMED_OUT)
+
+        result = Result.objects.get(attempt=attempt)
+        self.assertEqual(result.score, 2)
+        self.assertEqual(result.total_marks, 5)
