@@ -69,6 +69,23 @@ Change users through `apps/administration/services.py` (`create_user`, `deactiva
 `reactivate`, `change_role`), not by editing `User` directly, so these rules and the
 audit hook (`audit_hook`, implemented by the audit-log issue #22) always apply.
 
+## Course and enrolment management
+Administrators manage courses at `/manage/courses/` (OEP-F-042):
+- **Create / edit** a course (code, name, description, instructor) at `/manage/courses/new/`
+  and `/manage/courses/<id>/edit/`. Course codes are unique ignoring case. Each course has one
+  instructor, chosen from active instructors; changing it also moves the course's question bank
+  to the new instructor.
+- **Roster** at `/manage/courses/<id>/` lists the enrolled students. Enrol active students
+  into an active course, or unenrol a student. Only enrolled students see the course's
+  published exams and can start them.
+- **Deactivate / reactivate** a course. A deactivated course keeps its enrolments but cannot
+  be chosen for new exams or question imports, and no new students can be enrolled.
+- Courses are never deleted, because questions and exams refer to them.
+
+Change courses and enrolments through `apps/administration/services.py` (`create_course`,
+`update_course`, `set_course_active`, `enrol_students`, `unenrol_student`) so the same rules
+and the audit hook apply.
+
 ## Question import (CSV)
 Instructors and administrators import questions in bulk at `/exams/questions/import/`
 (OEP-F-011). Instructors can use their own active courses; administrators any active course.

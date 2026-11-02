@@ -820,6 +820,24 @@ class CourseActivationViewTest(TestCase):  # OEP-F-042
         self.assertTrue(self.course.is_active)
 
 
+class DashboardLinksTest(TestCase):  # OEP-F-004, OEP-F-042
+    def test_only_administrators_get_management_links(self):
+        links = [reverse("administration:user_list"), reverse("administration:course_list")]
+        for role, dashboard in [
+            (User.Role.ADMINISTRATOR, "accounts:admin_dashboard"),
+            (User.Role.INSTRUCTOR, "accounts:instructor_dashboard"),
+            (User.Role.STUDENT, "accounts:student_dashboard"),
+        ]:
+            with self.subTest(role=role):
+                self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+                response = self.client.get(reverse(dashboard))
+                for link in links:
+                    if role == User.Role.ADMINISTRATOR:
+                        self.assertContains(response, f'href="{link}"')
+                    else:
+                        self.assertNotContains(response, f'href="{link}"')
+
+
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004
     def setUp(self):
         self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)

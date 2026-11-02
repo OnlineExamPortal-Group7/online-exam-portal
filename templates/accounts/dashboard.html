@@ -73,4 +73,12 @@
     </p>
 {% endif %}
 
+{% if user.role == "administrator" %}
+    <p>
+        <a href="{% url 'administration:user_list' %}">Manage users</a>
+        <br>
+        <a href="{% url 'administration:course_list' %}">Manage courses</a>
+    </p>
+{% endif %}
+
 {% endblock %}
