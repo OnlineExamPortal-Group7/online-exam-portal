@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -28,3 +29,25 @@ class Result(models.Model):
 
     def __str__(self):
         return f"Result for attempt {self.attempt_id}: {self.score}/{self.total_marks}"
+
+
+class ResultPublication(models.Model):
+    """An exam's results are visible to students once this row exists (OEP-F-031)."""
+
+    exam = models.OneToOneField(
+        "exams.Exam",
+        on_delete=models.CASCADE,
+        related_name="result_publication",
+    )
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="published_results",
+    )
+    published_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-published_at"]
+
+    def __str__(self):
+        return f"Results published for {self.exam}"
