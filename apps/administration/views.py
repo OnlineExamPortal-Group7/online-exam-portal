@@ -11,7 +11,7 @@ from apps.accounts.permissions import RoleRequiredMixin
 
 from . import services
 from .forms import AdminUserCreateForm, CourseForm, EnrolForm, RoleChangeForm, UnenrolForm
-from .models import Course
+from .models import AuditLog, Course
 
 
 class UserListView(RoleRequiredMixin, ListView):
@@ -221,3 +221,16 @@ class CourseReactivateView(CourseDeactivateView):
     def perform(self, request, course):
         services.set_course_active(request.user, course, True)
         return f"Reactivated {course.code}."
+
+
+class AuditLogListView(RoleRequiredMixin, ListView):
+    """Administrator-only history of recorded administrative actions (Issue #22)."""
+
+    allowed_roles = (User.Role.ADMINISTRATOR,)
+    model = AuditLog
+    template_name = "administration/audit_log_list.html"
+    context_object_name = "audit_logs"
+    paginate_by = 25
+
+    def get_queryset(self):
+        return AuditLog.objects.select_related("actor").order_by("-timestamp", "-pk")
