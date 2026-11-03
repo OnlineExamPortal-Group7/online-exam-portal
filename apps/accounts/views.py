@@ -5,6 +5,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from apps.exams.models import Exam, ExamAttempt
+from apps.results.services import published_results_for
 
 from .models import User
 from .permissions import role_required
@@ -50,6 +51,15 @@ def student_dashboard(request):
         .order_by("start_time")
         .distinct()
     )
+
+    # Scores are shown only once the instructor has published them (OEP-F-031).
+    published = {
+        result.attempt.exam_id: result
+        for result in published_results_for(request.user)
+    }
+    exams = list(exams)
+    for exam in exams:
+        exam.published_result = published.get(exam.pk)
 
     return render(
         request,
