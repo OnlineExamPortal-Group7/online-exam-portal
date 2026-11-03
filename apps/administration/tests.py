@@ -7,8 +7,13 @@ from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from apps.accounts.models import User
+from apps.exams.access import questions_for
+from apps.exams.forms import ExamCreationForm
+from apps.exams.models import Question
+from apps.exams.question_import import importable_courses
 
 from . import services
+from .models import Course, Enrollment
 
 PASSWORD = "Str0ng-pass-123"
 
@@ -120,6 +125,212 @@ class UserServiceTest(TestCase):  # OEP-F-004
         hook.assert_any_call(
             "role_changed", self.admin, self.student,
             old_role=User.Role.STUDENT, new_role=User.Role.INSTRUCTOR,
+        )
+
+
+class CourseServiceTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+
+    def create(self, **overrides):
+        data = {"code": "MA101", "name": "Maths", "instructor": self.teacher}
+        data.update(overrides)
+        return services.create_course(self.admin, **data)
+
+    def update(self, **overrides):
+        data = {"code": "CS101", "name": "Programming", "instructor": self.teacher}
+        data.update(overrides)
+        return services.update_course(self.admin, self.course, **data)
+
+    def test_create_course(self):
+        course = self.create(code=" MA101 ", description="Algebra")
+        course.refresh_from_db()
+        self.assertEqual(course.code, "MA101")
+        self.assertEqual(course.instructor, self.teacher)
+        self.assertEqual(course.description, "Algebra")
+        self.assertTrue(course.is_active)
+
+    def test_course_code_must_be_unique_ignoring_case(self):
+        with self.assertRaisesMessage(ValidationError, "already exists"):
+            self.create(code="cs101")
+        self.assertEqual(Course.objects.count(), 1)
+
+    def test_instructor_must_be_an_active_instructor(self):
+        inactive = make_user("gone", role=User.Role.INSTRUCTOR, is_active=False)
+        for user in (make_user("student"), self.admin, inactive):
+            with self.subTest(user=user.username):
+                with self.assertRaisesMessage(ValidationError, "not an active instructor"):
+                    self.create(instructor=user)
+        self.assertEqual(Course.objects.count(), 1)
+
+    def test_update_course(self):
+        self.update(code="CS102", name="Programming II", description="Next part")
+        self.course.refresh_from_db()
+        self.assertEqual(
+            (self.course.code, self.course.name, self.course.description),
+            ("CS102", "Programming II", "Next part"),
+        )
+
+    def test_update_keeps_own_code_but_rejects_another_courses(self):
+        self.update(code="cs101")
+        Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        with self.assertRaisesMessage(ValidationError, "already exists"):
+            self.update(code="ma101")
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.code, "cs101")
+
+    def test_reassigning_instructor_moves_question_bank_access(self):
+        new_teacher = make_user("newteacher", role=User.Role.INSTRUCTOR)
+        question = Question.objects.create(
+            course=self.course, text="What is 2 + 2?", created_by=self.teacher
+        )
+        self.update(instructor=new_teacher)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.instructor, new_teacher)
+        self.assertIn(question, questions_for(new_teacher))
+        self.assertNotIn(question, questions_for(self.teacher))
+
+    def test_cannot_reassign_to_a_non_instructor(self):
+        with self.assertRaisesMessage(ValidationError, "not an active instructor"):
+            self.update(instructor=make_user("student"))
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.instructor, self.teacher)
+
+    def test_editing_keeps_a_since_deactivated_instructor(self):
+        self.teacher.is_active = False
+        self.teacher.save()
+        self.update(name="Renamed")
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Renamed")
+
+    def test_deactivate_and_reactivate_keep_enrolments(self):
+        Enrollment.objects.create(student=make_user("student"), course=self.course)
+        services.set_course_active(self.admin, self.course, False)
+        self.course.refresh_from_db()
+        self.assertFalse(self.course.is_active)
+        services.set_course_active(self.admin, self.course, True)
+        self.course.refresh_from_db()
+        self.assertTrue(self.course.is_active)
+        self.assertEqual(self.course.enrollments.count(), 1)
+
+    def test_only_administrators_can_change_courses(self):  # OEP-SR-003
+        calls = [
+            lambda: services.create_course(
+                self.teacher, code="X1", name="X", instructor=self.teacher
+            ),
+            lambda: services.update_course(
+                self.teacher, self.course, code="CS101", name="Hacked", instructor=self.teacher
+            ),
+            lambda: services.set_course_active(self.teacher, self.course, False),
+        ]
+        for call in calls:
+            with self.assertRaises(PermissionDenied):
+                call()
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Programming")
+        self.assertTrue(self.course.is_active)
+        self.assertFalse(Course.objects.filter(code="X1").exists())
+
+    @mock.patch.object(services, "audit_hook")
+    def test_audit_hook_is_called_for_each_change(self, hook):
+        new_teacher = make_user("newteacher", role=User.Role.INSTRUCTOR)
+        course = self.create()
+        self.update(instructor=new_teacher)
+        services.set_course_active(self.admin, self.course, False)
+        services.set_course_active(self.admin, self.course, True)
+        hook.assert_any_call("course_created", self.admin, course, instructor=self.teacher.pk)
+        hook.assert_any_call(
+            "course_updated", self.admin, self.course,
+            old_instructor=self.teacher.pk, new_instructor=new_teacher.pk,
+        )
+        hook.assert_any_call("course_deactivated", self.admin, self.course)
+        hook.assert_any_call("course_reactivated", self.admin, self.course)
+
+    @mock.patch.object(services, "audit_hook")
+    def test_refused_change_is_not_audited(self, hook):
+        with self.assertRaises(ValidationError):
+            self.create(code="CS101")
+        hook.assert_not_called()
+
+
+class EnrolmentServiceTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        self.alice = make_user("alice")
+        self.bob = make_user("bob")
+
+    def roster(self):
+        return list(
+            User.objects.filter(course_enrollments__course=self.course).order_by("username")
+        )
+
+    def test_enrol_students(self):
+        enrolled = services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        self.assertEqual(enrolled, [self.alice, self.bob])
+        self.assertEqual(self.roster(), [self.alice, self.bob])
+
+    def test_already_enrolled_students_are_skipped(self):
+        services.enrol_students(self.admin, self.course, [self.alice])
+        enrolled = services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        self.assertEqual(enrolled, [self.bob])
+        self.assertEqual(Enrollment.objects.count(), 2)
+
+    def test_only_active_students_can_be_enrolled_and_nobody_is_enrolled_on_error(self):
+        inactive = make_user("gone", is_active=False)
+        for user in (self.teacher, self.admin, inactive):
+            with self.subTest(user=user.username):
+                with self.assertRaisesMessage(ValidationError, "not an active student"):
+                    services.enrol_students(self.admin, self.course, [self.alice, user])
+        self.assertEqual(self.roster(), [])
+
+    def test_cannot_enrol_in_a_deactivated_course(self):
+        services.set_course_active(self.admin, self.course, False)
+        with self.assertRaisesMessage(ValidationError, "deactivated"):
+            services.enrol_students(self.admin, self.course, [self.alice])
+        self.assertEqual(self.roster(), [])
+
+    def test_unenrol_student(self):
+        services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        services.unenrol_student(self.admin, self.course, self.alice)
+        self.assertEqual(self.roster(), [self.bob])
+
+    def test_unenrolling_a_student_who_is_not_enrolled_is_refused(self):
+        with self.assertRaisesMessage(ValidationError, "not enrolled"):
+            services.unenrol_student(self.admin, self.course, self.alice)
+
+    def test_roster_is_per_course(self):
+        other = Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        services.enrol_students(self.admin, self.course, [self.alice])
+        services.enrol_students(self.admin, other, [self.bob])
+        self.assertEqual(self.roster(), [self.alice])
+
+    def test_only_administrators_can_change_enrolments(self):  # OEP-SR-003
+        Enrollment.objects.create(student=self.bob, course=self.course)
+        with self.assertRaises(PermissionDenied):
+            services.enrol_students(self.teacher, self.course, [self.alice])
+        with self.assertRaises(PermissionDenied):
+            services.unenrol_student(self.alice, self.course, self.bob)
+        self.assertEqual(self.roster(), [self.bob])
+
+    @mock.patch.object(services, "audit_hook")
+    def test_audit_hook_is_called_for_each_enrolment_change(self, hook):
+        Enrollment.objects.create(student=self.alice, course=self.course)
+        services.enrol_students(self.admin, self.course, [self.alice, self.bob])
+        services.unenrol_student(self.admin, self.course, self.alice)
+        self.assertEqual(
+            hook.call_args_list,
+            [
+                mock.call("student_enrolled", self.admin, self.bob, course=self.course.pk),
+                mock.call("student_unenrolled", self.admin, self.alice, course=self.course.pk),
+            ],
         )
 
 
@@ -297,6 +508,334 @@ class UserActionViewTest(TestCase):  # OEP-F-004
         response = self.client.get(reverse("administration:user_list"))
         self.assertContains(response, self.url("user_deactivate", self.student))
         self.assertContains(response, self.url("user_role", self.student))
+
+
+class CourseListViewTest(TestCase):  # OEP-F-042, OEP-SR-003
+    def setUp(self):
+        self.url = reverse("administration:course_list")
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user(
+            "teacher", role=User.Role.INSTRUCTOR, first_name="Tina", last_name="Teach"
+        )
+
+    def test_administrator_sees_courses_with_instructor_size_and_status(self):
+        course = Course.objects.create(code="CS101", name="Programming", instructor=self.teacher)
+        Course.objects.create(
+            code="MA101", name="Maths", instructor=self.teacher, is_active=False
+        )
+        Enrollment.objects.create(student=make_user("alice"), course=course)
+        self.client.login(username=self.admin.email, password=PASSWORD)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([c.code for c in response.context["courses"]], ["CS101", "MA101"])
+        self.assertEqual(response.context["courses"][0].student_count, 1)
+        self.assertContains(response, "Tina Teach")
+        self.assertContains(response, "Deactivated")
+        self.assertContains(response, reverse("administration:course_edit", args=[course.pk]))
+        self.assertContains(response, reverse("administration:course_detail", args=[course.pk]))
+
+    def test_other_roles_get_403(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            with self.subTest(role=role):
+                self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+                self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_anonymous_is_redirected_to_login(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+
+class CourseFormViewTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        self.create_url = reverse("administration:course_create")
+        self.edit_url = reverse("administration:course_edit", args=[self.course.pk])
+        self.client.login(username=self.admin.email, password=PASSWORD)
+
+    def form_data(self, **overrides):
+        data = {"code": "MA101", "name": "Maths", "description": "", "instructor": self.teacher.pk}
+        return {**data, **overrides}
+
+    def test_administrator_sees_the_create_form(self):
+        response = self.client.get(self.create_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="instructor"')
+
+    def test_administrator_creates_course(self):
+        response = self.client.post(self.create_url, self.form_data(), follow=True)
+        self.assertRedirects(response, reverse("administration:course_list"))
+        self.assertContains(response, "Created MA101 - Maths.")
+        course = Course.objects.get(code="MA101")
+        self.assertEqual(course.instructor, self.teacher)
+
+    def test_duplicate_code_is_rejected_ignoring_case(self):
+        response = self.client.post(self.create_url, self.form_data(code="cs101"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already exists")
+        self.assertEqual(Course.objects.count(), 1)
+
+    def test_instructor_choices_are_active_instructors_only(self):
+        make_user("gone", role=User.Role.INSTRUCTOR, is_active=False)
+        response = self.client.get(self.create_url)
+        choices = response.context["form"].fields["instructor"].queryset
+        self.assertEqual(list(choices), [self.teacher])
+        for user in (make_user("student"), User.objects.get(username="gone")):
+            with self.subTest(user=user.username):
+                response = self.client.post(
+                    self.create_url, self.form_data(instructor=user.pk)
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(Course.objects.filter(code="MA101").exists())
+
+    def test_administrator_edits_course_and_reassigns_instructor(self):
+        new_teacher = make_user("newteacher", role=User.Role.INSTRUCTOR)
+        with mock.patch.object(services, "audit_hook") as hook:
+            response = self.client.post(
+                self.edit_url,
+                self.form_data(code="CS101", name="Programming I", instructor=new_teacher.pk),
+                follow=True,
+            )
+        self.assertRedirects(response, reverse("administration:course_list"))
+        self.assertContains(response, "Saved CS101 - Programming I.")
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Programming I")
+        self.assertEqual(self.course.instructor, new_teacher)
+        hook.assert_called_once_with(
+            "course_updated", self.admin, mock.ANY,
+            old_instructor=self.teacher.pk, new_instructor=new_teacher.pk,
+        )
+
+    def test_edit_form_keeps_a_since_deactivated_instructor(self):
+        self.teacher.is_active = False
+        self.teacher.save()
+        response = self.client.get(self.edit_url)
+        self.assertIn(self.teacher, response.context["form"].fields["instructor"].queryset)
+        self.client.post(self.edit_url, self.form_data(code="CS101", name="Renamed"))
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Renamed")
+
+    def test_edit_rejects_another_courses_code(self):
+        Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        response = self.client.post(self.edit_url, self.form_data(code="ma101"))
+        self.assertEqual(response.status_code, 200)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.code, "CS101")
+
+    def test_unknown_course_is_404(self):
+        url = reverse("administration:course_edit", args=[999])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_other_roles_get_403_and_nothing_changes(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+            with self.subTest(role=role):
+                for url in (self.create_url, self.edit_url):
+                    self.assertEqual(self.client.get(url).status_code, 403)
+                    data = self.form_data(code="CS101", name="Hacked")
+                    self.assertEqual(self.client.post(url, data).status_code, 403)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.name, "Programming")
+        self.assertEqual(Course.objects.count(), 1)
+
+    def test_anonymous_is_redirected_to_login(self):
+        self.client.logout()
+        for url in (self.create_url, self.edit_url):
+            with self.subTest(url=url):
+                response = self.client.post(url, self.form_data())
+                self.assertEqual(response.status_code, 302)
+                self.assertIn(reverse("accounts:login"), response["Location"])
+        self.assertEqual(Course.objects.count(), 1)
+
+
+class CourseRosterViewTest(TestCase):  # OEP-F-042 / AC-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        self.alice = make_user("alice", first_name="Alice", last_name="Able")
+        self.bob = make_user("bob")
+        self.carol = make_user("carol")
+        Enrollment.objects.create(student=self.alice, course=self.course)
+        self.client.login(username=self.admin.email, password=PASSWORD)
+
+    def url(self, name):
+        return reverse(f"administration:{name}", args=[self.course.pk])
+
+    def roster(self):
+        return sorted(e.student.username for e in self.course.enrollments.all())
+
+    def test_roster_lists_exactly_the_enrolled_students(self):
+        other = Course.objects.create(code="MA101", name="Maths", instructor=self.teacher)
+        Enrollment.objects.create(student=self.bob, course=other)
+        response = self.client.get(self.url("course_detail"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [e.student for e in response.context["enrolments"]], [self.alice]
+        )
+        self.assertContains(response, "Enrolled students (1)")
+        self.assertContains(response, "Alice Able")
+
+    def test_enrol_choices_are_active_students_not_yet_enrolled(self):
+        make_user("gone", is_active=False)
+        response = self.client.get(self.url("course_detail"))
+        choices = response.context["enrol_form"].fields["students"].queryset
+        self.assertEqual(list(choices), [self.bob, self.carol])
+
+    def test_enrol_students(self):
+        response = self.client.post(
+            self.url("course_enrol"), {"students": [self.bob.pk, self.carol.pk]}, follow=True
+        )
+        self.assertRedirects(response, self.url("course_detail"))
+        self.assertContains(response, "Enrolled bob, carol in CS101.")
+        self.assertEqual(self.roster(), ["alice", "bob", "carol"])
+
+    def test_invalid_enrolment_shows_error(self):
+        for data in ({}, {"students": [self.alice.pk]}, {"students": [self.teacher.pk]}):
+            with self.subTest(data=data):
+                response = self.client.post(self.url("course_enrol"), data, follow=True)
+                self.assertContains(response, "Choose active students")
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_deactivated_course_refuses_enrolment(self):
+        services.set_course_active(self.admin, self.course, False)
+        response = self.client.get(self.url("course_detail"))
+        self.assertContains(response, "Reactivate it to enrol students.")
+        self.assertNotContains(response, self.url("course_enrol"))
+        response = self.client.post(
+            self.url("course_enrol"), {"students": [self.bob.pk]}, follow=True
+        )
+        self.assertContains(response, "deactivated")
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_unenrol_student(self):
+        response = self.client.get(self.url("course_detail"))
+        self.assertContains(response, self.url("course_unenrol"))
+        response = self.client.post(
+            self.url("course_unenrol"), {"student": self.alice.pk}, follow=True
+        )
+        self.assertRedirects(response, self.url("course_detail"))
+        self.assertContains(response, "Unenrolled alice from CS101.")
+        self.assertEqual(self.roster(), [])
+        self.assertContains(response, "No students enrolled yet.")
+
+    def test_invalid_unenrolment_shows_error(self):
+        response = self.client.post(self.url("course_unenrol"), {}, follow=True)
+        self.assertContains(response, "Choose a student to unenrol.")
+        response = self.client.post(
+            self.url("course_unenrol"), {"student": self.bob.pk}, follow=True
+        )
+        self.assertContains(response, "bob is not enrolled in CS101.")
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_actions_are_post_only_and_need_csrf(self):  # OEP-SR-005
+        for name in ("course_enrol", "course_unenrol"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(self.url(name)).status_code, 405)
+        client = Client(enforce_csrf_checks=True)
+        client.login(username=self.admin.email, password=PASSWORD)
+        response = client.post(self.url("course_unenrol"), {"student": self.alice.pk})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.roster(), ["alice"])
+
+    def test_unknown_course_is_404(self):
+        for name in ("course_detail", "course_enrol"):
+            with self.subTest(name=name):
+                url = reverse(f"administration:{name}", args=[999])
+                method = self.client.get if name == "course_detail" else self.client.post
+                self.assertEqual(method(url).status_code, 404)
+
+    def test_other_roles_get_403_and_nothing_changes(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+            with self.subTest(role=role):
+                self.assertEqual(self.client.get(self.url("course_detail")).status_code, 403)
+                response = self.client.post(self.url("course_enrol"), {"students": [self.bob.pk]})
+                self.assertEqual(response.status_code, 403)
+                response = self.client.post(self.url("course_unenrol"), {"student": self.alice.pk})
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.roster(), ["alice"])
+
+
+class CourseActivationViewTest(TestCase):  # OEP-F-042
+    def setUp(self):
+        self.admin = make_user("admin", role=User.Role.ADMINISTRATOR)
+        self.teacher = make_user("teacher", role=User.Role.INSTRUCTOR)
+        self.course = Course.objects.create(
+            code="CS101", name="Programming", instructor=self.teacher
+        )
+        Enrollment.objects.create(student=make_user("alice"), course=self.course)
+        self.client.login(username=self.admin.email, password=PASSWORD)
+
+    def url(self, name, pk=None):
+        return reverse(f"administration:{name}", args=[pk or self.course.pk])
+
+    def test_deactivate_and_reactivate_keep_enrolments(self):
+        list_url = reverse("administration:course_list")
+        response = self.client.post(self.url("course_deactivate"), follow=True)
+        self.assertRedirects(response, list_url)
+        self.assertContains(response, "Deactivated CS101.")
+        self.assertContains(response, self.url("course_reactivate"))
+        self.course.refresh_from_db()
+        self.assertFalse(self.course.is_active)
+
+        response = self.client.post(self.url("course_reactivate"), follow=True)
+        self.assertRedirects(response, list_url)
+        self.assertContains(response, "Reactivated CS101.")
+        self.assertContains(response, self.url("course_deactivate"))
+        self.course.refresh_from_db()
+        self.assertTrue(self.course.is_active)
+        self.assertEqual(self.course.enrollments.count(), 1)
+
+    def test_deactivated_course_leaves_exam_and_import_course_choices(self):
+        def choices():
+            form = ExamCreationForm(instructor=self.teacher)
+            return list(form.fields["course"].queryset), list(importable_courses(self.teacher))
+
+        self.assertEqual(choices(), ([self.course], [self.course]))
+        self.client.post(self.url("course_deactivate"))
+        self.assertEqual(choices(), ([], []))
+        self.client.post(self.url("course_reactivate"))
+        self.assertEqual(choices(), ([self.course], [self.course]))
+
+    def test_actions_are_post_only_and_unknown_course_is_404(self):
+        for name in ("course_deactivate", "course_reactivate"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(self.url(name)).status_code, 405)
+                self.assertEqual(self.client.post(self.url(name, 999)).status_code, 404)
+
+    def test_other_roles_get_403_and_nothing_changes(self):
+        for role in (User.Role.STUDENT, User.Role.INSTRUCTOR):
+            self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+            with self.subTest(role=role):
+                response = self.client.post(self.url("course_deactivate"))
+                self.assertEqual(response.status_code, 403)
+        self.course.refresh_from_db()
+        self.assertTrue(self.course.is_active)
+
+
+class DashboardLinksTest(TestCase):  # OEP-F-004, OEP-F-042
+    def test_only_administrators_get_management_links(self):
+        links = [reverse("administration:user_list"), reverse("administration:course_list")]
+        for role, dashboard in [
+            (User.Role.ADMINISTRATOR, "accounts:admin_dashboard"),
+            (User.Role.INSTRUCTOR, "accounts:instructor_dashboard"),
+            (User.Role.STUDENT, "accounts:student_dashboard"),
+        ]:
+            with self.subTest(role=role):
+                self.client.login(username=make_user(role, role=role).email, password=PASSWORD)
+                response = self.client.get(reverse(dashboard))
+                for link in links:
+                    if role == User.Role.ADMINISTRATOR:
+                        self.assertContains(response, f'href="{link}"')
+                    else:
+                        self.assertNotContains(response, f'href="{link}"')
 
 
 class EndSessionsTest(TestCase):  # OEP-F-004 / AC-004
