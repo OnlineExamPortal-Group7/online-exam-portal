@@ -1,3 +1,10 @@
+from django.urls import path
+
+from . import views
+
 app_name = "results"
 
-urlpatterns: list = []  # routes are added by later issues
+urlpatterns = [
+    path("exams/", views.ExamResultListView.as_view(), name="exam_list"),
+    path("exams/<int:pk>/", views.ExamResultReviewView.as_view(), name="exam_review"),
+]
