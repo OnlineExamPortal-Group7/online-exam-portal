@@ -1,108 +1,278 @@
-# Online Exam Portal (Group 7)
+# Online Exam Portal
 
-Django-based online MCQ exam portal. See the SRS for requirements.
+An online examination management system built using Django. The application allows administrators and faculty to manage users, courses, examinations, and questions, while students can attempt exams and view their results.
 
-## Project structure
-| Folder | Purpose | SRS module |
-|---|---|---|
-| `config/` | settings (`base`, `dev`, `prod`), root URLs, WSGI | - |
-| `apps/accounts/` | custom User + roles, login, RBAC | AuthModule |
-| `apps/exams/` | question bank, exams, timer, attempts | ExamsModule |
-| `apps/results/` | evaluation, publishing, analytics | ResultsModule |
-| `apps/administration/` | audit log, courses, backup | AdminModule |
-| `templates/`, `static/` | shared templates and assets | - |
+## Project Structure
 
-## Setup
+```text
+online-exam-portal/
+│
+├── apps/
+│   ├── accounts/
+│   ├── administration/
+│   ├── exams/
+│   └── results/
+│
+├── config/
+│   ├── settings/
+│   │   ├── dev.py
+│   │   └── prod.py
+│   └── urls.py
+│
+├── docs/
+│   └── database-backup-restore.md
+│
+├── manage.py
+├── requirements.txt
+├── README.md
+└── db.sqlite3
+```
+
+## Technologies Used
+
+- Python
+- Django
+- SQLite (development database)
+- PostgreSQL (production database)
+- HTML, CSS and JavaScript
+- Git and GitHub
+- Flake8 for code quality
+
+## Prerequisites
+
+Install the following before running the project:
+
+- Python 3
+- pip
+- Git
+- Visual Studio Code (recommended)
+
+## Installation and Setup
+
+### 1. Clone the repository
+
 ```bash
 git clone https://github.com/OnlineExamPortal-Group7/online-exam-portal.git
-cd online-exam-portal
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
 ```
-Open http://127.0.0.1:8000/
 
-## Tests and lint
+### 2. Navigate to the project directory
+
+```bash
+cd online-exam-portal
+```
+
+### 3. Create a virtual environment
+
+```bash
+python -m venv venv
+```
+
+### 4. Activate the virtual environment
+
+**Windows PowerShell:**
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+### 5. Install dependencies
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### 6. Apply database migrations
+
+```bash
+python manage.py migrate --settings=config.settings.dev
+```
+
+### 7. Create a superuser
+
+```bash
+python manage.py createsuperuser --settings=config.settings.dev
+```
+
+### 8. Start the development server
+
+```bash
+python manage.py runserver --settings=config.settings.dev
+```
+
+Open the application at:
+
+http://127.0.0.1:8000/
+
+## Application Features
+
+### Authentication and Roles
+
+- User authentication and login.
+- Role-based access control.
+- Password reset functionality.
+- Account lockout security.
+- Separate access permissions for different user roles.
+
+### User Administration
+
+- Manage application users.
+- Maintain user information and account details.
+- Control access based on assigned roles.
+
+### Course and Enrolment Management
+
+- Create and manage courses.
+- Enrol students in courses.
+- Maintain course and student enrolment information.
+
+### Examination Management
+
+- Create and manage examinations.
+- Add questions and choices.
+- Randomise examination questions.
+- Configure examination duration.
+- Support student examination attempts.
+
+### Student Examination Interface
+
+- Display examination questions.
+- Navigate between questions.
+- Select and save answers.
+- Track examination time.
+- Support manual submission.
+- Automatically submit examinations when the time expires.
+
+### Evaluation and Results
+
+- Automatically evaluate multiple-choice questions.
+- Calculate marks based on correct answers.
+- Assign zero marks for incorrect or unanswered questions.
+- Store examination results.
+- Calculate the percentage score.
+
+### Question Import (CSV)
+
+The application supports importing examination questions using CSV files.
+
+- The uploaded file is validated before importing.
+- Validation errors are reported with their corresponding row numbers.
+- If any row contains an error, the import is cancelled.
+- Valid questions are saved in a single database transaction.
+
+## Database Configuration
+
+The project supports separate development and production settings.
+
+| Environment | Database |
+|---|---|
+| Development | SQLite |
+| Production | PostgreSQL |
+
+Development commands use:
+
+```bash
+--settings=config.settings.dev
+```
+
+Production commands use:
+
+```bash
+--settings=config.settings.prod
+```
+
+Configure the required environment variables and database credentials before running the production configuration.
+
+## Database Backup and Restoration
+
+The procedures for backing up, validating, and restoring the development SQLite database and production PostgreSQL database are documented here:
+
+[Database Backup and Restore Procedures](docs/database-backup-restore.md)
+
+**Important:** Database backups may contain sensitive user and examination information. Do not commit database backup files or credentials to GitHub.
+
+## Running Tests
+
+Run the complete test suite:
+
 ```bash
 python manage.py test
-flake8 .
 ```
 
-## Settings
-`manage.py` uses `config.settings.dev` (SQLite). Production uses
-`config.settings.prod` (PostgreSQL, TLS settings). Production refuses to start
-(`ImproperlyConfigured`) unless `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `POSTGRES_DB`,
-`POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_HOST` are set and non-empty. See `.env.example`.
-Generate a key with:
-`python -c "from django.core.management.utils import get_random_secret_key as g; print(g())"`
+Run Django system checks:
 
-## Workflow
-Branch from `main` (`feature/issue-N-short-name`), open a pull request that says
-`Closes #N`, and get one teammate's review before merging.
+```bash
+python manage.py check
+```
 
-## Authentication and roles
-- Log in at `/accounts/login/` with e-mail and password. Roles: Student, Instructor, Administrator.
-- Protect views with `@role_required(User.Role.INSTRUCTOR)` or `RoleRequiredMixin`
-  (`apps/accounts/permissions.py`). Wrong role gives HTTP 403; anonymous users go to login.
-- Creating an administrator: `python manage.py createsuperuser` (gets the Administrator role).
-- One active session per user (OEP-F-005): logging in on another device or browser signs out
-  the previous session. To sign a user out from code, use `end_sessions(user)` in
-  `apps/accounts/sessions.py`.
-- Question bank and answer keys (OEP-F-014): any page that shows questions, choices or
-  `is_correct` outside a student's own running attempt must use `QuestionBankAccessMixin` or
-  `@question_bank_required` (`apps/exams/access.py`), and list questions with
-  `questions_for(user)`. A test fails if any exams page lets a Student through, unless it is one
-  of the attempt pages in `STUDENT_ALLOWED_EXAM_URLS` (`apps/exams/test_question_bank_guard.py`).
+Run tests for the examinations application:
 
-## User administration
-Administrators manage accounts at `/manage/users/` (OEP-F-004):
-- **Create** a user with a role at `/manage/users/new/`.
-- **Deactivate / reactivate** an account. A deactivated user cannot log in.
-- **Change a role.** The user is signed out and gets the new role on their next login.
-- An administrator cannot deactivate their own account or remove their own Administrator role.
-- Every route under `/manage/` returns HTTP 403 for Students and Instructors.
+```bash
+python manage.py test apps.exams
+```
 
-Change users through `apps/administration/services.py` (`create_user`, `deactivate`,
-`reactivate`, `change_role`), not by editing `User` directly, so these rules and the
-audit hook (`audit_hook`, implemented by the audit-log issue #22) always apply.
+## Code Quality and Linting
 
-## Course and enrolment management
-Administrators manage courses at `/manage/courses/` (OEP-F-042):
-- **Create / edit** a course (code, name, description, instructor) at `/manage/courses/new/`
-  and `/manage/courses/<id>/edit/`. Course codes are unique ignoring case. Each course has one
-  instructor, chosen from active instructors; changing it also moves the course's question bank
-  to the new instructor.
-- **Roster** at `/manage/courses/<id>/` lists the enrolled students. Enrol active students
-  into an active course, or unenrol a student. Only enrolled students see the course's
-  published exams and can start them.
-- **Deactivate / reactivate** a course. A deactivated course keeps its enrolments but cannot
-  be chosen for new exams or question imports, and no new students can be enrolled.
-- Courses are never deleted, because questions and exams refer to them.
+Install Flake8 if it is not already installed:
 
-Change courses and enrolments through `apps/administration/services.py` (`create_course`,
-`update_course`, `set_course_active`, `enrol_students`, `unenrol_student`) so the same rules
-and the audit hook apply.
+```bash
+python -m pip install flake8
+```
 
-## Question import (CSV)
-Instructors and administrators import questions in bulk at `/exams/questions/import/`
-(OEP-F-011). Instructors can use their own active courses; administrators any active course.
-Students get HTTP 403. Download an example file from the import page.
+Run Flake8 across the project:
 
-CSV format (UTF-8, header row first, up to 1 MB and 500 questions):
+```bash
+python -m flake8 .
+```
 
-| Column | Rule |
-|---|---|
-| `course` | course code |
-| `topic` | required, up to 100 characters |
-| `difficulty` | `easy`, `medium` or `hard` |
-| `question` | required |
-| `option_1` to `option_6` | 2 to 6 options, filled in order, all different |
-| `correct` | number of the one correct option, e.g. `2` |
-| `marks` | optional, whole number of at least 1 (default 1) |
+## Git Workflow
 
-The whole file is checked first. If any row has a problem, nothing is imported and every
-problem is listed with its row number (the header is row 1). Otherwise all questions are saved
-in one transaction, so a fixed file can simply be uploaded again.
+The project follows a feature-branch workflow.
+
+### 1. Update the main branch
+
+```bash
+git checkout main
+git pull origin main
+```
+
+### 2. Create a feature branch
+
+```bash
+git checkout -b feature/your-issue-description
+```
+
+### 3. Stage and commit changes
+
+```bash
+git add .
+git commit -m "Describe your changes"
+```
+
+### 4. Push the feature branch
+
+```bash
+git push -u origin feature/your-issue-description
+```
+
+### 5. Create a Pull Request
+
+- Open the repository on GitHub.
+- Create a Pull Request from your feature branch into `main`.
+- Provide a meaningful title and description.
+- Link the related GitHub issue.
+- Wait for review and required checks before merging.
+
+## Contribution Guidelines
+
+- Work on a separate feature branch for each issue.
+- Follow the existing project structure and coding conventions.
+- Test changes before creating a Pull Request.
+- Run Django checks and Flake8 before submitting.
+- Do not commit virtual environments, database backups, credentials, or unnecessary generated files.
+- Keep commits meaningful and focused.
+
+## Project Team
+
+**Online Exam Portal – Group 7**
+
+Developed as a collaborative academic project.
