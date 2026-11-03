@@ -1,6 +1,10 @@
 """Instructor result review and publication (OEP-F-031)."""
+from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.db.models import Exists, OuterRef
+from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
+from django.views import View
 from django.views.generic import DetailView, ListView
 
 from apps.accounts.models import User
@@ -61,6 +65,22 @@ class ExamResultReviewView(InstructorResultsMixin, DetailView):
             window_closed=timezone.now() >= exam.end_time,
             **kwargs,
         )
+
+
+class PublishResultsView(InstructorResultsMixin, View):
+    """POST only: publish an exam's results so its students can see their scores."""
+
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        exam = get_object_or_404(self.get_queryset(), pk=pk)
+        try:
+            services.publish_results(exam, request.user)
+        except ValidationError as error:
+            messages.error(request, error.messages[0])
+        else:
+            messages.success(request, "Results published. Students can now see their scores.")
+        return redirect("results:exam_review", pk=exam.pk)
 
 
 def review_rows(exam):

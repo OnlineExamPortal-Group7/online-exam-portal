@@ -1,10 +1,11 @@
-"""Instructor result review pages (OEP-F-031)."""
+"""Instructor result review and publication pages (OEP-F-031)."""
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.exams.models import ExamAttempt
 
-from .services import publish_results
+from .models import ResultPublication
+from .services import is_published, publish_results
 from .test_services import ResultsTestData
 
 
@@ -100,3 +101,70 @@ class ExamResultReviewViewTest(ResultsTestData, TestCase):
             with self.subTest(user=user.username):
                 response = self.client.get(self.review_url(self.ended_exam))
                 self.assertEqual(response.status_code, 403)
+
+
+class PublishResultsViewTest(ResultsTestData, TestCase):
+    def publish_url(self, exam):
+        return reverse("results:publish", args=[exam.pk])
+
+    def test_instructor_publishes_after_exam_ends(self):
+        self.client.force_login(self.instructor)
+
+        response = self.client.post(self.publish_url(self.ended_exam), follow=True)
+
+        self.assertRedirects(response, reverse("results:exam_review", args=[self.ended_exam.pk]))
+        self.assertTrue(is_published(self.ended_exam))
+        self.assertContains(response, "Results published.")
+        self.assertNotContains(response, "Publish results</button>")
+
+    def test_review_page_shows_publish_button_only_when_allowed(self):
+        self.client.force_login(self.instructor)
+        button = "Publish results</button>"
+
+        self.assertContains(
+            self.client.get(reverse("results:exam_review", args=[self.ended_exam.pk])), button
+        )
+        self.assertNotContains(
+            self.client.get(reverse("results:exam_review", args=[self.open_exam.pk])), button
+        )
+
+    def test_publishing_before_exam_ends_is_refused(self):
+        self.client.force_login(self.instructor)
+
+        response = self.client.post(self.publish_url(self.open_exam), follow=True)
+
+        self.assertFalse(is_published(self.open_exam))
+        self.assertContains(response, "only after the exam window has closed")
+
+    def test_publishing_twice_is_refused(self):
+        self.client.force_login(self.instructor)
+        self.client.post(self.publish_url(self.ended_exam))
+
+        response = self.client.post(self.publish_url(self.ended_exam), follow=True)
+
+        self.assertContains(response, "already published")
+        self.assertEqual(ResultPublication.objects.count(), 1)
+
+    def test_get_is_not_allowed(self):
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(self.publish_url(self.ended_exam))
+
+        self.assertEqual(response.status_code, 405)
+        self.assertFalse(is_published(self.ended_exam))
+
+    def test_other_instructor_gets_404(self):
+        self.client.force_login(self.other_instructor)
+
+        response = self.client.post(self.publish_url(self.ended_exam))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(is_published(self.ended_exam))
+
+    def test_students_and_administrators_get_403(self):
+        for user in (self.student, self.admin):
+            self.client.force_login(user)
+            with self.subTest(user=user.username):
+                response = self.client.post(self.publish_url(self.ended_exam))
+                self.assertEqual(response.status_code, 403)
+        self.assertFalse(is_published(self.ended_exam))

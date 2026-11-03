@@ -22,6 +22,10 @@
 <p>The exam is still open. Results can be published after {{ exam.end_time }}.</p>
 {% else %}
 <p>Not published. Students cannot see their scores yet.</p>
+<form method="post" action="{% url 'results:publish' exam.pk %}">
+  {% csrf_token %}
+  <button type="submit">Publish results</button>
+</form>
 {% endif %}
 
 <h3>Scores</h3>
