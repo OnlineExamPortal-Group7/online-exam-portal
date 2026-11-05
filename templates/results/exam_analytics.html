@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ exam.title }} - Class Analytics{% endblock %}
+
+{% block content %}
+
+<h2>Class Performance Analytics</h2>
+
+<h3>{{ exam.title }}</h3>
+
+<p>
+    <strong>Course:</strong>
+    {{ exam.course.code }} - {{ exam.course.name }}
+    <br>
+    <strong>Total marks:</strong> {{ exam.total_marks }}
+</p>
+
+<h3>Class Overview</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th>Metric</th>
+            <th>Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Students with published scores</td>
+            <td>{{ scored_count }}</td>
+        </tr>
+        <tr>
+            <td>Average class percentage</td>
+            <td>{{ average_percentage }}%</td>
+        </tr>
+        <tr>
+            <td>Total published score</td>
+            <td>{{ total_published_score }}</td>
+        </tr>
+        <tr>
+            <td>Total published marks</td>
+            <td>{{ total_published_marks }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Score Distribution</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th>Score Range</th>
+            <th>Number of Students</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in score_distribution %}
+        <tr>
+            <td>{{ item.label }}</td>
+            <td>{{ item.count }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="2">No published scores available.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h3>Per-Question Performance</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th>Question</th>
+            <th>Correct Answers</th>
+            <th>Total Attempts</th>
+            <th>Correct Answer Rate</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in question_rows %}
+        <tr>
+            <td>{{ item.question.text }}</td>
+            <td>{{ item.correct_count }}</td>
+            <td>{{ item.attempt_count }}</td>
+            <td>{{ item.correct_rate }}%</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="4">No questions found for this exam.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p>
+    <a href="{% url 'results:exam_review' exam.pk %}">
+        Back to exam results
+    </a>
+</p>
+
+<p>
+    <a href="{% url 'results:exam_list' %}">
+        Back to exam list
+    </a>
+</p>
+
+{% endblock %}

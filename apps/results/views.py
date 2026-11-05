@@ -75,6 +75,30 @@ class ExamResultReviewView(InstructorResultsMixin, DetailView):
         )
 
 
+class ExamAnalyticsView(InstructorResultsMixin, DetailView):
+    """Show class-wide performance analytics for a published exam."""
+
+    template_name = "results/exam_analytics.html"
+    context_object_name = "exam"
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+
+        try:
+            analytics = services.class_performance_analytics(
+                self.object
+            )
+        except ValidationError as error:
+            messages.error(request, error.messages[0])
+            return redirect(
+                "results:exam_review",
+                pk=self.object.pk,
+            )
+
+        context = self.get_context_data(**analytics)
+        return self.render_to_response(context)
+
+
 class PublishResultsView(InstructorResultsMixin, View):
     """POST only: publish an exam's results so its students can see their scores."""
 
