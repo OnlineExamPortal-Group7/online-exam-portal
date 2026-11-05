@@ -1,0 +1,61 @@
+
+{% extends "base.html" %}
+
+{% block title %}Examination History{% endblock %}
+
+{% block content %}
+<h2>Examination History</h2>
+
+<p>View your previous examination attempts and their status.</p>
+
+<p>
+    <a href="{% url 'results:student_results' %}">My Results</a>
+    |
+    <a href="{% url 'accounts:student_dashboard' %}">Back to Dashboard</a>
+</p>
+
+{% if attempts %}
+    <table border="1" cellpadding="8">
+        <thead>
+            <tr>
+                <th>Exam</th>
+                <th>Course</th>
+                <th>Started At</th>
+                <th>Submitted At</th>
+                <th>Status</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for attempt in attempts %}
+                <tr>
+                    <td>{{ attempt.exam.title }}</td>
+                    <td>{{ attempt.exam.course.name }}</td>
+                    <td>{{ attempt.started_at|date:"d M Y, h:i A" }}</td>
+                    <td>
+                        {% if attempt.submitted_at %}
+                            {{ attempt.submitted_at|date:"d M Y, h:i A" }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ attempt.get_status_display }}</td>
+                    <td>
+                        {% if attempt.published_result %}
+                            {{ attempt.published_result.score }} /
+                            {{ attempt.published_result.total_marks }}
+                            <a href="{% url 'results:student_result_detail' attempt.published_result.pk %}">
+                                View Details
+                            </a>
+                        {% else %}
+                            Not published
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>You have not attempted any examinations yet.</p>
+{% endif %}
+{% endblock %}

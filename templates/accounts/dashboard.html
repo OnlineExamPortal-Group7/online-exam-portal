@@ -8,6 +8,12 @@
 <p>Signed in as {{ user.email }}.</p>
 
 {% if user.role == "student" %}
+    <p>
+        <a href="{% url 'results:student_results' %}">My Results</a>
+        |
+        <a href="{% url 'results:student_history' %}">Examination History</a>
+    </p>
+
     <h3>Your available examinations</h3>
 
     {% if exams %}
