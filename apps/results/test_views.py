@@ -380,3 +380,100 @@ class StudentResultDetailViewTest(ResultsTestData, TestCase):
         self.assertRedirects(
             response, f"{reverse('accounts:login')}?next={url}"
         )
+
+# Issue #20: Class performance analytics.
+
+
+class ExamAnalyticsViewTest(ResultsTestData, TestCase):
+
+    def analytics_url(self, exam):
+        return reverse("results:exam_analytics", args=[exam.pk])
+
+    def test_instructor_can_view_published_exam_analytics(self):
+        self.make_attempt(
+            self.ended_exam, self.student, self.correct
+        )
+        self.make_attempt(
+            self.ended_exam, self.student2, self.wrong
+        )
+
+        publish_results(self.ended_exam, self.instructor)
+
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(
+            self.analytics_url(self.ended_exam)
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(
+            response, "results/exam_analytics.html"
+        )
+
+        self.assertEqual(response.context["scored_count"], 2)
+        self.assertEqual(response.context["average_percentage"], 50.0)
+        self.assertEqual(
+            response.context["total_published_score"], 2
+        )
+        self.assertEqual(
+            response.context["total_published_marks"], 4
+        )
+
+        question = response.context["question_rows"][0]
+
+        self.assertEqual(question["correct_count"], 1)
+        self.assertEqual(question["attempt_count"], 2)
+        self.assertEqual(question["correct_rate"], 50.0)
+
+        self.assertContains(response, "Class Performance Analytics")
+        self.assertContains(response, "Score Distribution")
+        self.assertContains(response, "Per-Question Performance")
+
+    def test_unpublished_analytics_redirects_to_review(self):
+        self.make_attempt(
+            self.ended_exam, self.student, self.correct
+        )
+
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(
+            self.analytics_url(self.ended_exam)
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("results:exam_review", args=[self.ended_exam.pk]),
+        )
+
+    def test_other_instructor_gets_404(self):
+        publish_results(self.ended_exam, self.instructor)
+
+        self.client.force_login(self.other_instructor)
+
+        response = self.client.get(
+            self.analytics_url(self.ended_exam)
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_students_and_administrators_get_403(self):
+        publish_results(self.ended_exam, self.instructor)
+
+        for user in (self.student, self.admin):
+            self.client.force_login(user)
+
+            with self.subTest(user=user.username):
+                response = self.client.get(
+                    self.analytics_url(self.ended_exam)
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_anonymous_user_is_redirected_to_login(self):
+        url = self.analytics_url(self.ended_exam)
+
+        response = self.client.get(url)
+
+        self.assertRedirects(
+            response,
+            f"{reverse('accounts:login')}?next={url}",
+        )

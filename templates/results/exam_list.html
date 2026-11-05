@@ -18,7 +18,15 @@
         {% elif now < exam.end_time %}Exam still open
         {% else %}Not published{% endif %}
       </td>
-      <td><a href="{% url 'results:exam_review' exam.pk %}">Review</a></td>
+      <td>
+       <a href="{% url 'results:exam_review' exam.pk %}">Review</a>
+
+       {% if exam.results_published %}
+       | <a href="{% url 'results:exam_analytics' exam.pk %}">
+        Analytics
+       </a>
+       {% endif %}
+      </td>
     </tr>
     {% empty %}
     <tr><td colspan="5">You have no exams in your courses yet.</td></tr>
