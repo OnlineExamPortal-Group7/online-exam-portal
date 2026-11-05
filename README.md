@@ -276,3 +276,24 @@ git push -u origin feature/your-issue-description
 **Online Exam Portal – Group 7**
 
 Developed as a collaborative academic project.
+
+## Result review and publication
+Instructors review and publish exam results at `/results/exams/` (OEP-F-031), also linked
+from the instructor dashboard:
+- **Review** at `/results/exams/<id>/` lists every enrolled student with their attempt status,
+  score and percentage ("Not attempted" if none), plus the average. Attempts left in progress
+  after their deadline are timed out and scored when the page opens.
+- **Publish** results once the exam window has closed. Publishing happens once per exam and
+  cannot be undone. Until then students see "Result: Not published yet" on their dashboard;
+  afterwards they see their score.
+- Only the course's instructor can review or publish. Another instructor gets HTTP 404;
+  Students and Administrators get HTTP 403.
+
+For other features, use `apps/results/services.py` rather than querying `Result` directly:
+- `published_results_for(student)`: the only query to use when showing scores to a student
+  (results history, #19).
+- `results_for_exam(exam)` and `is_published(exam)`: all scores of an exam, published or not
+  (class analytics, #20).
+- `publish_results(exam, actor)`: applies the rules above and calls the audit hook.
+- The `results_published` signal (`apps/results/signals.py`) is sent with `exam` and
+  `published_by` after a publish is saved (notifications, #25).

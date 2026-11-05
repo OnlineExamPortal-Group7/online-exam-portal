@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Exam results{% endblock %}
+{% block content %}
+<h2>Exam results</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<table>
+  <thead>
+    <tr><th>Exam</th><th>Course</th><th>Ends</th><th>Results</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for exam in exams %}
+    <tr>
+      <td>{{ exam.title }}</td>
+      <td>{{ exam.course.code }}</td>
+      <td>{{ exam.end_time }}</td>
+      <td>
+        {% if exam.results_published %}Published
+        {% elif now < exam.end_time %}Exam still open
+        {% else %}Not published{% endif %}
+      </td>
+      <td><a href="{% url 'results:exam_review' exam.pk %}">Review</a></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">You have no exams in your courses yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p><a href="{% url 'accounts:dashboard' %}">Back to dashboard</a></p>
+{% endblock %}

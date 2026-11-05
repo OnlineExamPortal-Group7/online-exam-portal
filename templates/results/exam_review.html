@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ exam.title }} results{% endblock %}
+{% block content %}
+<h2>{{ exam.title }} results</h2>
+{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<p>
+  <strong>Course:</strong> {{ exam.course.code }} - {{ exam.course.name }}
+  <br>
+  <strong>Window:</strong> {{ exam.start_time }} to {{ exam.end_time }}
+  <br>
+  <strong>Total marks:</strong> {{ exam.total_marks }}
+  <br>
+  <strong>Scored attempts:</strong> {{ scored_count }} of {{ rows|length }} students
+  {% if average_percentage is not None %}(average {{ average_percentage }}%){% endif %}
+</p>
+
+<h3>Publication</h3>
+{% if publication %}
+<p>Published on {{ publication.published_at }} by {{ publication.published_by.username }}.
+  Students can see their scores.</p>
+{% elif not window_closed %}
+<p>The exam is still open. Results can be published after {{ exam.end_time }}.</p>
+{% else %}
+<p>Not published. Students cannot see their scores yet.</p>
+<form method="post" action="{% url 'results:publish' exam.pk %}">
+  {% csrf_token %}
+  <button type="submit">Publish results</button>
+</form>
+{% endif %}
+
+<h3>Scores</h3>
+<table>
+  <thead>
+    <tr><th>Username</th><th>Name</th><th>Attempt</th><th>Score</th><th>Percentage</th></tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.student.username }}</td>
+      <td>{{ row.student.get_full_name }}</td>
+      <td>{% if row.attempt %}{{ row.attempt.get_status_display }}{% else %}Not attempted{% endif %}</td>
+      <td>{% if row.result %}{{ row.result.score }} / {{ row.result.total_marks }}{% else %}-{% endif %}</td>
+      <td>{% if row.result %}{{ row.result.percentage }}%{% else %}-{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No students are enrolled in this course.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p><a href="{% url 'results:exam_list' %}">Back to exam results</a></p>
+{% endblock %}

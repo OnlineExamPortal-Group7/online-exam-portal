@@ -48,6 +48,16 @@
                         {% else %}
                             <p>Status: Submitted</p>
                         {% endif %}
+
+                        {% if exam.published_result %}
+                            <p>
+                                <strong>Score:</strong>
+                                {{ exam.published_result.score }} / {{ exam.published_result.total_marks }}
+                                ({{ exam.published_result.percentage }}%)
+                            </p>
+                        {% elif attempt.status != "in_progress" or attempt.deadline_at <= now %}
+                            <p>Result: Not published yet</p>
+                        {% endif %}
                     {% elif now < exam.start_time %}
                         <p>Status: Upcoming</p>
                     {% elif now >= exam.end_time %}
@@ -70,6 +80,12 @@
 {% if user.role == "instructor" or user.role == "administrator" %}
     <p>
         <a href="{% url 'exams:question_list' %}">Question bank</a>
+    </p>
+{% endif %}
+
+{% if user.role == "instructor" %}
+    <p>
+        <a href="{% url 'results:exam_list' %}">Exam results</a>
     </p>
 {% endif %}
 
