@@ -1,0 +1,42 @@
+
+{% extends "base.html" %}
+
+{% block title %}Result Details{% endblock %}
+
+{% block content %}
+<h2>Examination Result Details</h2>
+
+<h3>{{ result.attempt.exam.title }}</h3>
+
+<p><strong>Course:</strong> {{ result.attempt.exam.course.name }}</p>
+
+<p><strong>Exam End Date:</strong>
+    {{ result.attempt.exam.end_time|date:"d M Y, h:i A" }}
+</p>
+
+<hr>
+
+<h3>Your Performance</h3>
+
+<p><strong>Marks Obtained:</strong>
+    {{ result.score }} / {{ result.total_marks }}
+</p>
+
+<p><strong>Percentage:</strong> {{ result.percentage }}%</p>
+
+<p><strong>Evaluated At:</strong>
+    {{ result.evaluated_at|date:"d M Y, h:i A" }}
+</p>
+
+<p><strong>Attempt Status:</strong>
+    {{ result.attempt.get_status_display }}
+</p>
+
+<hr>
+
+<p>
+    <a href="{% url 'results:student_results' %}">Back to My Results</a>
+    |
+    <a href="{% url 'results:student_history' %}">Examination History</a>
+</p>
+{% endblock %}

@@ -1,4 +1,6 @@
-"""Instructor result review and publication (OEP-F-031)."""
+
+"""Instructor result review and publication, plus student result history."""
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db.models import Exists, OuterRef
@@ -55,8 +57,14 @@ class ExamResultReviewView(InstructorResultsMixin, DetailView):
     def get_context_data(self, **kwargs):
         exam = self.object
         rows = review_rows(exam)
-        percentages = [row["result"].percentage for row in rows if row["result"]]
-        average = round(sum(percentages) / len(percentages), 2) if percentages else None
+        percentages = [
+            row["result"].percentage for row in rows if row["result"]
+        ]
+        average = (
+            round(sum(percentages) / len(percentages), 2)
+            if percentages else None
+        )
+
         return super().get_context_data(
             rows=rows,
             scored_count=len(percentages),
@@ -74,31 +82,43 @@ class PublishResultsView(InstructorResultsMixin, View):
 
     def post(self, request, pk):
         exam = get_object_or_404(self.get_queryset(), pk=pk)
+
         try:
             services.publish_results(exam, request.user)
         except ValidationError as error:
             messages.error(request, error.messages[0])
         else:
-            messages.success(request, "Results published. Students can now see their scores.")
+            messages.success(
+                request,
+                "Results published. Students can now see their scores.",
+            )
+
         return redirect("results:exam_review", pk=exam.pk)
 
 
 def review_rows(exam):
     """One row per enrolled student (and anyone else who attempted), with attempt and result."""
+
     attempts = {}
     for attempt in (
         ExamAttempt.objects.filter(exam=exam)
         .select_related("result")
         .order_by("started_at")
     ):
-        attempts[attempt.student_id] = attempt  # the latest attempt wins
+        attempts[attempt.student_id] = attempt
 
     enrolled_ids = set(
-        User.objects.filter(course_enrollments__course=exam.course).values_list("pk", flat=True)
+        User.objects.filter(
+            course_enrollments__course=exam.course
+        ).values_list("pk", flat=True)
     )
-    students = User.objects.filter(pk__in=enrolled_ids | set(attempts)).order_by("username")
+
+    students = User.objects.filter(
+        pk__in=enrolled_ids | set(attempts)
+    ).order_by("username")
 
     rows = []
+
     for student in students:
         attempt = attempts.get(student.pk)
         rows.append({
@@ -106,4 +126,58 @@ def review_rows(exam):
             "attempt": attempt,
             "result": getattr(attempt, "result", None) if attempt else None,
         })
+
     return rows
+
+
+class StudentResultsMixin(RoleRequiredMixin):
+    """Restrict student result pages to authenticated students."""
+
+    allowed_roles = (User.Role.STUDENT,)
+
+
+class StudentResultsListView(StudentResultsMixin, ListView):
+    """Show only the logged-in student's published results."""
+
+    template_name = "results/student_results.html"
+    context_object_name = "results"
+
+    def get_queryset(self):
+        return services.published_results_for(self.request.user)
+
+
+class StudentResultDetailView(StudentResultsMixin, DetailView):
+    """Show details of one published result belonging to the student."""
+
+    template_name = "results/student_result_detail.html"
+    context_object_name = "result"
+
+    def get_queryset(self):
+        return services.published_results_for(self.request.user)
+
+
+class StudentExamHistoryView(StudentResultsMixin, ListView):
+    """Show the logged-in student's own examination attempts."""
+
+    template_name = "results/student_history.html"
+    context_object_name = "attempts"
+
+    def get_queryset(self):
+        return (
+            ExamAttempt.objects.filter(student=self.request.user)
+            .select_related("exam__course")
+            .order_by("-started_at")
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        published_results = {
+            result.attempt_id: result
+            for result in services.published_results_for(self.request.user)
+        }
+
+        for attempt in context["attempts"]:
+            attempt.published_result = published_results.get(attempt.pk)
+
+        return context
