@@ -5,9 +5,10 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.http import HttpResponseForbidden
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from apps.accounts.models import User
 from apps.accounts.permissions import role_required
@@ -353,6 +354,58 @@ def save_answer(request, attempt_id):
     ).url
 
     return redirect(f"{attempt_url}?q={next_question}")
+
+
+@login_required
+@require_POST
+def autosave_answer(request, attempt_id):
+    """Save one answer in the background and acknowledge it as JSON (OEP-F-022).
+
+    Called by the exam page whenever the student picks a choice, so the answer is
+    on the server even if the browser crashes before the next navigation.
+    """
+    if request.user.role != User.Role.STUDENT:
+        raise PermissionDenied
+
+    with transaction.atomic():
+        attempt = get_object_or_404(
+            ExamAttempt.objects.select_for_update().select_related("exam"),
+            pk=attempt_id,
+            student=request.user,
+        )
+
+        if expire_attempt_if_needed(attempt):
+            return JsonResponse(
+                {"saved": False, "error": "The exam deadline has passed."},
+                status=409,
+            )
+
+        if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+            return JsonResponse(
+                {"saved": False, "error": "This attempt is not active."},
+                status=403,
+            )
+
+        try:
+            answer = _store_answer(
+                attempt,
+                request.POST.get("question_id"),
+                request.POST.get("choice_id"),
+            )
+        except Http404:
+            return JsonResponse(
+                {"saved": False, "error": "Invalid question or choice."},
+                status=400,
+            )
+
+    return JsonResponse(
+        {
+            "saved": True,
+            "question_id": answer.question_id,
+            "choice_id": answer.selected_choice_id,
+            "saved_at": answer.saved_at.isoformat(),
+        }
+    )
 
 
 @login_required

@@ -138,3 +138,117 @@ class StoreAnswerValidationTests(AutosaveTestBase):
         answer.refresh_from_db()
         self.assertIsNone(answer.selected_choice_id)
         self.assertEqual(Answer.objects.filter(attempt=attempt).count(), 1)
+
+
+class AutosaveEndpointTests(AutosaveTestBase):
+    """POST exams/attempt/<id>/autosave/ returns a JSON acknowledgement."""
+
+    def autosave(self, attempt, question_id, choice_id=""):
+        return self.client.post(
+            reverse("exams:autosave_answer", args=[attempt.pk]),
+            {"question_id": question_id, "choice_id": choice_id},
+        )
+
+    def test_autosave_stores_answer_and_acknowledges(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["saved"])
+        self.assertEqual(data["question_id"], self.questions[0].pk)
+        self.assertEqual(data["choice_id"], self.correct[0].pk)
+        self.assertIn("saved_at", data)
+        answer = Answer.objects.get(attempt=attempt, question=self.questions[0])
+        self.assertEqual(answer.selected_choice_id, self.correct[0].pk)
+
+    def test_autosave_overwrites_and_clears_the_same_answer(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+        question = self.questions[1]
+
+        self.autosave(attempt, question.pk, self.wrong[1].pk)
+        self.autosave(attempt, question.pk, self.correct[1].pk)
+        answer = Answer.objects.get(attempt=attempt, question=question)
+        self.assertEqual(answer.selected_choice_id, self.correct[1].pk)
+
+        response = self.autosave(attempt, question.pk, "")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["choice_id"])
+        answer.refresh_from_db()
+        self.assertIsNone(answer.selected_choice_id)
+        self.assertEqual(Answer.objects.filter(attempt=attempt).count(), 1)
+
+    def test_invalid_question_or_choice_returns_400(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        for question_id, choice_id in (
+            ("", ""),
+            ("abc", ""),
+            (self.questions[0].pk, self.correct[1].pk),
+            (self.questions[0].pk, "999999"),
+        ):
+            response = self.autosave(attempt, question_id, choice_id)
+            self.assertEqual(response.status_code, 400)
+            self.assertFalse(response.json()["saved"])
+
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+
+    def test_get_is_not_allowed(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.client.get(reverse("exams:autosave_answer", args=[attempt.pk]))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_submitted_attempt_cannot_autosave(self):
+        attempt = self.create_attempt(status=ExamAttempt.Status.SUBMITTED)
+        self.client.force_login(self.student)
+
+        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()["saved"])
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+
+    def test_expired_attempt_is_timed_out_scored_and_rejected(self):
+        attempt = self.create_attempt(deadline=timezone.now() - timedelta(seconds=1))
+        self.client.force_login(self.student)
+
+        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.json()["saved"])
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.TIMED_OUT)
+        self.assertTrue(hasattr(attempt, "result"))
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+
+    def test_student_cannot_autosave_into_another_students_attempt(self):
+        attempt = self.create_attempt(student=self.other_student)
+        self.client.force_login(self.student)
+
+        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+
+    def test_instructor_cannot_autosave(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.instructor)
+
+        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_anonymous_user_is_redirected_to_login(self):
+        attempt = self.create_attempt()
+
+        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
