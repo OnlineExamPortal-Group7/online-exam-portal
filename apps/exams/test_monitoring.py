@@ -1,0 +1,225 @@
+"""Live examination monitoring (OEP-F-040)."""
+from datetime import timedelta
+
+from django.contrib.auth.models import AnonymousUser
+from django.db import connection
+from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
+
+from apps.accounts.models import User
+from apps.administration.models import Course, Enrollment
+
+from . import monitoring
+from .models import Exam, ExamAttempt
+
+PASSWORD = "TestPassword123!"
+
+
+def data_queries(captured):
+    """Queries that touch data; SAVEPOINT statements depend on the database and test wrapper."""
+    return [
+        query["sql"]
+        for query in captured.captured_queries
+        if "SAVEPOINT" not in query["sql"].upper()
+    ]
+
+
+class MonitoringTestBase(TestCase):
+    """A live exam with three enrolled students. Defines no tests."""
+
+    @classmethod
+    def setUpTestData(cls):
+        def user(username, role):
+            return User.objects.create_user(
+                username=username,
+                email=f"{username}@example.com",
+                password=PASSWORD,
+                role=role,
+            )
+
+        cls.instructor = user("mon_instructor", User.Role.INSTRUCTOR)
+        cls.other_instructor = user("mon_instructor2", User.Role.INSTRUCTOR)
+        cls.admin = user("mon_admin", User.Role.ADMINISTRATOR)
+        cls.students = [user(f"mon_student{n}", User.Role.STUDENT) for n in (1, 2, 3)]
+        cls.outsider = user("mon_outsider", User.Role.STUDENT)
+
+        cls.course = Course.objects.create(
+            name="Software Engineering", code="SE501", instructor=cls.instructor
+        )
+        cls.other_course = Course.objects.create(
+            name="Compilers", code="CD502", instructor=cls.other_instructor
+        )
+        for student in cls.students:
+            Enrollment.objects.create(student=student, course=cls.course)
+
+        now = timezone.now()
+        cls.exam = cls.make_exam(cls.course, "Live Exam", now)
+        cls.other_exam = cls.make_exam(cls.other_course, "Other Exam", now)
+
+    @classmethod
+    def make_exam(cls, course, title, now):
+        return Exam.objects.create(
+            course=course,
+            title=title,
+            created_by=course.instructor,
+            start_time=now - timedelta(minutes=10),
+            end_time=now + timedelta(hours=1),
+            duration_minutes=30,
+            status=Exam.Status.PUBLISHED,
+        )
+
+    def attempt(self, student, status=ExamAttempt.Status.IN_PROGRESS, deadline=None):
+        return ExamAttempt.objects.create(
+            exam=self.exam,
+            student=student,
+            deadline_at=deadline or timezone.now() + timedelta(minutes=20),
+            status=status,
+            submitted_at=(
+                None if status == ExamAttempt.Status.IN_PROGRESS else timezone.now()
+            ),
+        )
+
+    def status_by_username(self, snapshot):
+        return {row["student"].username: row["status"] for row in snapshot["rows"]}
+
+
+class MonitorableExamsTests(MonitoringTestBase):
+    def test_administrator_can_monitor_every_exam(self):
+        exams = monitoring.monitorable_exams(self.admin)
+        self.assertCountEqual(exams, [self.exam, self.other_exam])
+
+    def test_instructor_can_monitor_only_own_course_exams(self):
+        self.assertCountEqual(monitoring.monitorable_exams(self.instructor), [self.exam])
+        self.assertCountEqual(
+            monitoring.monitorable_exams(self.other_instructor), [self.other_exam]
+        )
+
+    def test_students_and_anonymous_users_can_monitor_nothing(self):
+        self.assertFalse(monitoring.monitorable_exams(self.students[0]).exists())
+        self.assertFalse(monitoring.monitorable_exams(AnonymousUser()).exists())
+
+    def test_inactive_instructor_can_monitor_nothing(self):
+        self.instructor.is_active = False
+        self.instructor.save(update_fields=["is_active"])
+
+        self.assertFalse(monitoring.monitorable_exams(self.instructor).exists())
+
+
+class MonitorSnapshotTests(MonitoringTestBase):
+    def test_every_enrolled_student_is_listed_as_not_started(self):
+        snapshot = monitoring.monitor_snapshot(self.exam)
+
+        self.assertEqual(snapshot["total"], 3)
+        self.assertEqual(
+            set(self.status_by_username(snapshot).values()), {monitoring.NOT_STARTED}
+        )
+        self.assertEqual(snapshot["counts"][monitoring.NOT_STARTED], 3)
+        self.assertTrue(snapshot["is_live"])
+        self.assertTrue(all(row["enrolled"] for row in snapshot["rows"]))
+
+    def test_each_attempt_status_is_reported(self):
+        self.attempt(self.students[0])
+        self.attempt(self.students[1], status=ExamAttempt.Status.SUBMITTED)
+        self.attempt(self.students[2], status=ExamAttempt.Status.TIMED_OUT)
+
+        snapshot = monitoring.monitor_snapshot(self.exam)
+
+        self.assertEqual(
+            self.status_by_username(snapshot),
+            {
+                "mon_student1": monitoring.IN_PROGRESS,
+                "mon_student2": monitoring.SUBMITTED,
+                "mon_student3": monitoring.TIMED_OUT,
+            },
+        )
+        self.assertEqual(
+            snapshot["counts"],
+            {
+                monitoring.NOT_STARTED: 0,
+                monitoring.IN_PROGRESS: 1,
+                monitoring.SUBMITTED: 1,
+                monitoring.TIMED_OUT: 1,
+            },
+        )
+        row = snapshot["rows"][1]
+        self.assertEqual(row["status_label"], "Submitted")
+        self.assertIsNotNone(row["started_at"])
+        self.assertIsNotNone(row["submitted_at"])
+
+    def test_overdue_attempt_is_shown_timed_out_without_writing(self):
+        attempt = self.attempt(
+            self.students[0], deadline=timezone.now() - timedelta(seconds=1)
+        )
+
+        with CaptureQueriesContext(connection) as captured:
+            snapshot = monitoring.monitor_snapshot(self.exam)
+
+        self.assertEqual(
+            self.status_by_username(snapshot)["mon_student1"], monitoring.TIMED_OUT
+        )
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.IN_PROGRESS)
+        self.assertTrue(
+            all(sql.lstrip().upper().startswith("SELECT") for sql in data_queries(captured))
+        )
+
+    def test_unenrolled_student_with_attempt_is_still_listed(self):
+        self.attempt(self.outsider, status=ExamAttempt.Status.SUBMITTED)
+
+        snapshot = monitoring.monitor_snapshot(self.exam)
+
+        self.assertEqual(snapshot["total"], 4)
+        row = next(r for r in snapshot["rows"] if r["student"] == self.outsider)
+        self.assertFalse(row["enrolled"])
+        self.assertEqual(row["status"], monitoring.SUBMITTED)
+
+    def test_other_exams_attempts_are_ignored(self):
+        ExamAttempt.objects.create(
+            exam=self.other_exam,
+            student=self.students[0],
+            deadline_at=timezone.now() + timedelta(minutes=20),
+        )
+
+        snapshot = monitoring.monitor_snapshot(self.exam)
+
+        self.assertEqual(
+            self.status_by_username(snapshot)["mon_student1"], monitoring.NOT_STARTED
+        )
+
+    def test_rows_are_sorted_by_username(self):
+        snapshot = monitoring.monitor_snapshot(self.exam)
+
+        usernames = [row["student"].username for row in snapshot["rows"]]
+        self.assertEqual(usernames, sorted(usernames))
+
+    def test_ended_exam_is_not_live(self):
+        later = self.exam.end_time + timedelta(seconds=1)
+
+        snapshot = monitoring.monitor_snapshot(self.exam, now=later)
+
+        self.assertFalse(snapshot["is_live"])
+
+    def test_query_count_does_not_grow_with_class_size(self):
+        self.attempt(self.students[0])
+
+        with CaptureQueriesContext(connection) as small:
+            monitoring.monitor_snapshot(self.exam)
+
+        for n in range(20):
+            student = User.objects.create_user(
+                username=f"mon_extra{n}",
+                email=f"mon_extra{n}@example.com",
+                password=PASSWORD,
+                role=User.Role.STUDENT,
+            )
+            Enrollment.objects.create(student=student, course=self.course)
+            if n % 2:
+                self.attempt(student)
+
+        with CaptureQueriesContext(connection) as large:
+            snapshot = monitoring.monitor_snapshot(self.exam)
+
+        self.assertEqual(snapshot["total"], 23)
+        self.assertEqual(len(data_queries(small)), 2)
+        self.assertEqual(len(data_queries(large)), 2)
