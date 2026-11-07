@@ -8,8 +8,10 @@ shown as timed out, but it is not written. Timing out and scoring still happen i
 `expire_attempt_if_needed` and `results.services.finalize_overdue_attempts`.
 """
 from django.utils import timezone
+from django.views.generic import DetailView, ListView
 
 from apps.accounts.models import User
+from apps.accounts.permissions import RoleRequiredMixin
 
 from .models import Exam, ExamAttempt
 
@@ -98,3 +100,66 @@ def monitor_snapshot(exam, now=None):
         "counts": counts,
         "total": len(rows),
     }
+
+
+RECENTLY_ENDED_LIMIT = 20
+
+
+class MonitorAccessMixin(RoleRequiredMixin):
+    """Instructors and administrators only; exams outside monitorable_exams give 404."""
+
+    allowed_roles = MONITOR_ROLES
+
+    def get_queryset(self):
+        return monitorable_exams(self.request.user).select_related("course")
+
+
+class MonitorExamListView(MonitorAccessMixin, ListView):
+    """Exams the user can monitor: live now, upcoming, and recently ended."""
+
+    template_name = "exams/monitor_list.html"
+    context_object_name = "exams"
+
+    def get_queryset(self):
+        return super().get_queryset().exclude(status=Exam.Status.DRAFT)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        now = timezone.now()
+        exams = context["exams"]
+        context.update(
+            now=now,
+            live_exams=sorted(
+                (e for e in exams if e.start_time <= now < e.end_time),
+                key=lambda e: e.end_time,
+            ),
+            upcoming_exams=sorted(
+                (e for e in exams if e.start_time > now),
+                key=lambda e: e.start_time,
+            ),
+            ended_exams=sorted(
+                (e for e in exams if e.end_time <= now),
+                key=lambda e: e.end_time,
+                reverse=True,
+            )[:RECENTLY_ENDED_LIMIT],
+        )
+        return context
+
+
+class MonitorExamDetailView(MonitorAccessMixin, DetailView):
+    """Live status of every student for one exam."""
+
+    template_name = "exams/monitor_detail.html"
+    context_object_name = "exam"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        snapshot = monitor_snapshot(self.object)
+        context.update(
+            snapshot=snapshot,
+            status_summary=[
+                (status, label, snapshot["counts"][status])
+                for status, label in STATUS_LABELS.items()
+            ],
+        )
+        return context

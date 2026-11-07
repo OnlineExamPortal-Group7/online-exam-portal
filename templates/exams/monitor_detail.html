@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Monitor {{ exam.title }}{% endblock %}
+{% block content %}
+<h2>Monitor: {{ exam.title }}</h2>
+
+<p>
+  <strong>Course:</strong> {{ exam.course.code }} - {{ exam.course.name }}
+  <br>
+  <strong>Window:</strong> {{ exam.start_time }} to {{ exam.end_time }}
+  <br>
+  <strong>State:</strong>
+  <span id="monitor-live">{% if snapshot.is_live %}Live{% else %}Not running{% endif %}</span>
+  <br>
+  <strong>Last updated:</strong>
+  <time id="monitor-updated" datetime="{{ snapshot.generated_at|date:'c' }}">
+    {{ snapshot.generated_at|time:"H:i:s" }}
+  </time>
+</p>
+
+<h3>Summary</h3>
+<ul id="monitor-summary">
+  {% for status, label, count in status_summary %}
+  <li>{{ label }}: <strong id="count-{{ status }}">{{ count }}</strong></li>
+  {% endfor %}
+  <li>Total students: <strong id="count-total">{{ snapshot.total }}</strong></li>
+</ul>
+
+<h3>Students</h3>
+<table>
+  <thead>
+    <tr><th>Username</th><th>Name</th><th>Status</th><th>Started</th><th>Finished</th></tr>
+  </thead>
+  <tbody id="monitor-rows">
+    {% for row in snapshot.rows %}
+    <tr data-status="{{ row.status }}">
+      <td>{{ row.student.username }}{% if not row.enrolled %} (not enrolled){% endif %}</td>
+      <td>{{ row.student.get_full_name }}</td>
+      <td>{{ row.status_label }}</td>
+      <td>{% if row.started_at %}{{ row.started_at|time:"H:i:s" }}{% else %}-{% endif %}</td>
+      <td>{% if row.submitted_at %}{{ row.submitted_at|time:"H:i:s" }}{% else %}-{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No students are enrolled in this course.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{% url 'exams:monitor_list' %}">Back to monitored exams</a></p>
+{% endblock %}

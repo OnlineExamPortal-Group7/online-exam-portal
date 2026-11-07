@@ -5,6 +5,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User
@@ -223,3 +224,143 @@ class MonitorSnapshotTests(MonitoringTestBase):
         self.assertEqual(snapshot["total"], 23)
         self.assertEqual(len(data_queries(small)), 2)
         self.assertEqual(len(data_queries(large)), 2)
+
+
+class MonitorPageAccessTests(MonitoringTestBase):
+    """Who may open the monitoring list and detail pages."""
+
+    def detail_url(self, exam=None):
+        return reverse("exams:monitor_detail", args=[(exam or self.exam).pk])
+
+    def test_course_instructor_can_open_detail(self):
+        self.client.force_login(self.instructor)
+        self.assertEqual(self.client.get(self.detail_url()).status_code, 200)
+
+    def test_administrator_can_open_any_exam(self):
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get(self.detail_url()).status_code, 200)
+        self.assertEqual(
+            self.client.get(self.detail_url(self.other_exam)).status_code, 200
+        )
+
+    def test_other_instructor_gets_404(self):
+        self.client.force_login(self.other_instructor)
+        self.assertEqual(self.client.get(self.detail_url()).status_code, 404)
+
+    def test_student_gets_403(self):
+        self.client.force_login(self.students[0])
+        self.assertEqual(self.client.get(self.detail_url()).status_code, 403)
+        self.assertEqual(
+            self.client.get(reverse("exams:monitor_list")).status_code, 403
+        )
+
+    def test_anonymous_user_is_redirected_to_login(self):
+        for url in (reverse("exams:monitor_list"), self.detail_url()):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 302)
+            self.assertIn(reverse("accounts:login"), response.url)
+
+    def test_dashboard_links_to_monitoring_for_staff_only(self):
+        link = reverse("exams:monitor_list")
+        for user, visible in (
+            (self.instructor, True),
+            (self.admin, True),
+            (self.students[0], False),
+        ):
+            self.client.force_login(user)
+            response = self.client.get(reverse("accounts:dashboard"), follow=True)
+            if visible:
+                self.assertContains(response, f'href="{link}"')
+            else:
+                self.assertNotContains(response, f'href="{link}"')
+
+
+class MonitorPageContentTests(MonitoringTestBase):
+    """What the monitoring pages show."""
+
+    def test_list_groups_live_upcoming_and_ended_exams(self):
+        now = timezone.now()
+        upcoming = Exam.objects.create(
+            course=self.course,
+            title="Upcoming Exam",
+            created_by=self.instructor,
+            start_time=now + timedelta(days=1),
+            end_time=now + timedelta(days=1, hours=1),
+            duration_minutes=30,
+            status=Exam.Status.PUBLISHED,
+        )
+        ended = Exam.objects.create(
+            course=self.course,
+            title="Ended Exam",
+            created_by=self.instructor,
+            start_time=now - timedelta(days=1),
+            end_time=now - timedelta(days=1) + timedelta(hours=1),
+            duration_minutes=30,
+            status=Exam.Status.PUBLISHED,
+        )
+        Exam.objects.create(
+            course=self.course,
+            title="Draft Exam",
+            created_by=self.instructor,
+            start_time=now - timedelta(minutes=5),
+            end_time=now + timedelta(hours=1),
+            duration_minutes=30,
+        )
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(reverse("exams:monitor_list"))
+
+        self.assertEqual(response.context["live_exams"], [self.exam])
+        self.assertEqual(response.context["upcoming_exams"], [upcoming])
+        self.assertEqual(response.context["ended_exams"], [ended])
+        self.assertNotContains(response, "Draft Exam")
+        self.assertNotContains(response, "Other Exam")
+        self.assertContains(
+            response, reverse("exams:monitor_detail", args=[self.exam.pk])
+        )
+
+    def test_detail_shows_counts_and_student_statuses(self):
+        self.attempt(self.students[0])
+        self.attempt(self.students[1], status=ExamAttempt.Status.SUBMITTED)
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(
+            reverse("exams:monitor_detail", args=[self.exam.pk])
+        )
+
+        self.assertContains(response, "Monitor: Live Exam")
+        self.assertContains(response, '<span id="monitor-live">Live</span>')
+        self.assertContains(response, '<strong id="count-not_started">1</strong>')
+        self.assertContains(response, '<strong id="count-in_progress">1</strong>')
+        self.assertContains(response, '<strong id="count-submitted">1</strong>')
+        self.assertContains(response, '<strong id="count-timed_out">0</strong>')
+        self.assertContains(response, '<strong id="count-total">3</strong>')
+        self.assertContains(response, '<tr data-status="in_progress">')
+        self.assertContains(response, '<tr data-status="submitted">')
+        self.assertContains(response, '<tr data-status="not_started">')
+        for student in self.students:
+            self.assertContains(response, student.username)
+
+    def test_detail_marks_unenrolled_attempting_student(self):
+        self.attempt(self.outsider, status=ExamAttempt.Status.SUBMITTED)
+        self.client.force_login(self.admin)
+
+        response = self.client.get(
+            reverse("exams:monitor_detail", args=[self.exam.pk])
+        )
+
+        self.assertContains(response, "mon_outsider (not enrolled)")
+
+    def test_viewing_detail_does_not_change_overdue_attempt(self):
+        attempt = self.attempt(
+            self.students[0], deadline=timezone.now() - timedelta(seconds=1)
+        )
+        self.client.force_login(self.instructor)
+
+        response = self.client.get(
+            reverse("exams:monitor_detail", args=[self.exam.pk])
+        )
+
+        self.assertContains(response, '<tr data-status="timed_out">')
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.IN_PROGRESS)

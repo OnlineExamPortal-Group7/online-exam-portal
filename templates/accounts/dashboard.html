@@ -86,6 +86,8 @@
 {% if user.role == "instructor" or user.role == "administrator" %}
     <p>
         <a href="{% url 'exams:question_list' %}">Question bank</a>
+        <br>
+        <a href="{% url 'exams:monitor_list' %}">Monitor live exams</a>
     </p>
 {% endif %}
 

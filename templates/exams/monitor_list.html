@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Monitor exams{% endblock %}
+{% block content %}
+<h2>Monitor exams</h2>
+
+<h3>Live now</h3>
+{% if live_exams %}
+<ul>
+  {% for exam in live_exams %}
+  <li>
+    <a href="{% url 'exams:monitor_detail' exam.pk %}">{{ exam.title }}</a>
+    ({{ exam.course.code }}), ends {{ exam.end_time }}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No exams are running right now.</p>
+{% endif %}
+
+<h3>Upcoming</h3>
+{% if upcoming_exams %}
+<ul>
+  {% for exam in upcoming_exams %}
+  <li>
+    <a href="{% url 'exams:monitor_detail' exam.pk %}">{{ exam.title }}</a>
+    ({{ exam.course.code }}), starts {{ exam.start_time }}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No upcoming exams.</p>
+{% endif %}
+
+<h3>Recently ended</h3>
+{% if ended_exams %}
+<ul>
+  {% for exam in ended_exams %}
+  <li>
+    <a href="{% url 'exams:monitor_detail' exam.pk %}">{{ exam.title }}</a>
+    ({{ exam.course.code }}), ended {{ exam.end_time }}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No ended exams.</p>
+{% endif %}
+
+<p><a href="{% url 'accounts:dashboard' %}">Back to dashboard</a></p>
+{% endblock %}
