@@ -391,3 +391,83 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
             submit_form,
             rf'id="submit-choice-id"\s+value="{self.wrong[0].pk}"',
         )
+
+
+class ResumeAttemptTests(AutosaveTestBase):
+    """Reopening an attempt resumes where the student left off."""
+
+    def open_attempt(self, attempt, query=""):
+        self.client.force_login(self.student)
+        return self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk]) + query
+        )
+
+    def test_reopening_resumes_at_first_unanswered_question(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+        )
+
+        response = self.open_attempt(attempt)
+
+        self.assertEqual(response.context["question_index"], 1)
+        self.assertContains(response, self.questions[1].text)
+
+    def test_answer_row_without_choice_counts_as_unanswered(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(attempt=attempt, question=self.questions[0])
+
+        response = self.open_attempt(attempt)
+
+        self.assertEqual(response.context["question_index"], 0)
+        self.assertEqual(response.context["answered_count"], 0)
+
+    def test_fully_answered_attempt_opens_at_first_question(self):
+        attempt = self.create_attempt()
+        for question, choice in zip(self.questions, self.correct):
+            Answer.objects.create(attempt=attempt, question=question, selected_choice=choice)
+
+        response = self.open_attempt(attempt)
+
+        self.assertEqual(response.context["question_index"], 0)
+
+    def test_explicit_question_parameter_is_respected(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+        )
+
+        response = self.open_attempt(attempt, "?q=0")
+
+        self.assertEqual(response.context["question_index"], 0)
+
+    def test_start_attempt_resumes_existing_attempt_at_unanswered_question(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+        )
+        self.client.force_login(self.student)
+
+        response = self.client.get(
+            reverse("exams:start_attempt", args=[self.exam.pk]), follow=True
+        )
+
+        self.assertEqual(response.context["attempt"].pk, attempt.pk)
+        self.assertEqual(response.context["question_index"], 1)
+
+    def test_answered_questions_are_marked_in_navigation(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+        )
+
+        response = self.open_attempt(attempt)
+
+        self.assertEqual(response.context["answered_count"], 1)
+        self.assertContains(response, 'aria-label="Go to question 1 (answered)"')
+        self.assertContains(response, 'aria-label="Go to question 2"')
+        self.assertContains(response, 'class=" answered"')
+        self.assertRegex(
+            response.content.decode(),
+            r'<span id="answered-count">1</span>\s+of 2 answered',
+        )

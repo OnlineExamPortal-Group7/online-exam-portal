@@ -57,6 +57,11 @@
     cursor: pointer;
   }
 
+  .question-nav button.answered {
+    background: #d1e7dd;
+    border-color: #146c43;
+  }
+
   .question-nav button.active {
     background: #1d4ed8;
     color: #fff;
@@ -137,14 +142,19 @@
       Question {{ question_index|add:1 }} of {{ question_count }}
     </p>
 
+    <p id="answered-summary">
+      <span id="answered-count">{{ answered_count }}</span>
+      of {{ question_count }} answered
+    </p>
+
     <nav class="question-nav" aria-label="Question navigation">
 
       {% for question in questions %}
 
         <button
           type="button"
-          class="{% if forloop.counter0 == question_index %}active{% endif %}"
-          aria-label="Go to question {{ forloop.counter }}"
+          class="{% if forloop.counter0 == question_index %}active{% endif %}{% if question.selected_choice_id is not None %} answered{% endif %}"
+          aria-label="Go to question {{ forloop.counter }}{% if question.selected_choice_id is not None %} (answered){% endif %}"
           aria-current="{% if forloop.counter0 == question_index %}step{% endif %}"
           onclick="navigateToQuestion({{ forloop.counter0 }})">
 
@@ -367,6 +377,7 @@
         }
         if (response.ok) {
           showAutosaveStatus("Answer saved.", "saved");
+          markCurrentQuestionAnswered();
         } else if (response.status === 409) {
           // The server says the deadline has passed.
           submitAutomatically();
@@ -382,6 +393,24 @@
       .catch(function() {
         retryAutosave(choiceId, sequence, attempt);
       });
+  }
+
+  function markCurrentQuestionAnswered() {
+    const button = document.querySelector(
+      '.question-nav button[aria-current="step"]'
+    );
+    if (!button || button.classList.contains("answered")) {
+      return;
+    }
+    button.classList.add("answered");
+    button.setAttribute(
+      "aria-label",
+      button.getAttribute("aria-label") + " (answered)"
+    );
+    const counter = document.getElementById("answered-count");
+    if (counter) {
+      counter.textContent = Number(counter.textContent) + 1;
+    }
   }
 
   function retryAutosave(choiceId, sequence, attempt) {

@@ -270,10 +270,26 @@ def take_attempt(request, attempt_id):
     for question in questions:
         question.selected_choice_id = saved_answers.get(question.pk)
 
-    try:
-        question_index = int(request.GET.get("q", "0"))
-    except (TypeError, ValueError):
-        question_index = 0
+    answered_count = sum(
+        1 for question in questions if question.selected_choice_id is not None
+    )
+
+    if "q" in request.GET:
+        try:
+            question_index = int(request.GET["q"])
+        except (TypeError, ValueError):
+            question_index = 0
+    else:
+        # Opening or reloading the attempt (e.g. after a browser crash) resumes
+        # at the first unanswered question (OEP-F-022).
+        question_index = next(
+            (
+                index
+                for index, question in enumerate(questions)
+                if question.selected_choice_id is None
+            ),
+            0,
+        )
 
     if questions:
         question_index = max(
@@ -293,6 +309,7 @@ def take_attempt(request, attempt_id):
             "current_question": current_question,
             "question_index": question_index,
             "question_count": len(questions),
+            "answered_count": answered_count,
             "remaining_seconds": remaining_seconds,
         },
     )
