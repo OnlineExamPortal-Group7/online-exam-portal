@@ -1,4 +1,5 @@
 """Live examination monitoring (OEP-F-040)."""
+import re
 from datetime import timedelta
 
 from django.contrib.auth.models import AnonymousUser
@@ -452,3 +453,39 @@ class MonitorStatusEndpointTests(MonitoringTestBase):
         # Session, user, exam, enrolled students, attempts.
         self.assertEqual(len(queries), 5, "\n".join(queries))
         self.assertTrue(all(sql.lstrip().upper().startswith("SELECT") for sql in queries))
+
+
+class MonitorAutoRefreshTests(MonitoringTestBase):
+    """The detail page refreshes itself well within 30 seconds (AC-040)."""
+
+    def get_detail(self):
+        self.client.force_login(self.instructor)
+        return self.client.get(reverse("exams:monitor_detail", args=[self.exam.pk]))
+
+    def test_page_polls_status_endpoint_within_30_seconds(self):
+        content = self.get_detail().content.decode()
+
+        status_url = reverse("exams:monitor_status", args=[self.exam.pk])
+        self.assertIn(f'data-status-url="{status_url}"', content)
+        poll_ms = int(re.search(r'data-poll-ms="(\d+)"', content).group(1))
+        self.assertLessEqual(poll_ms, 15000)
+        self.assertGreater(poll_ms, 0)
+        self.assertIn('id="monitor-connection" role="status"', content)
+        self.assertIn("fetch(statusUrl", content)
+
+    def test_noscript_refresh_is_in_head_and_within_30_seconds(self):
+        content = self.get_detail().content.decode()
+
+        head = content[:content.index("</head>")]
+        match = re.search(
+            r'<noscript><meta http-equiv="refresh" content="(\d+)"></noscript>', head
+        )
+        self.assertIsNotNone(match, "noscript refresh must be inside <head>")
+        self.assertLessEqual(int(match.group(1)), 30)
+
+    def test_other_pages_do_not_auto_refresh(self):
+        self.client.force_login(self.instructor)
+
+        for url in (reverse("exams:monitor_list"), reverse("accounts:login")):
+            response = self.client.get(url, follow=True)
+            self.assertNotContains(response, 'http-equiv="refresh"')
