@@ -1,7 +1,8 @@
 """Answer auto-save and persistence (OEP-F-022, TC-Exam-03)."""
+import re
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -252,3 +253,54 @@ class AutosaveEndpointTests(AutosaveTestBase):
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+
+
+class AutosavePageTests(AutosaveTestBase):
+    """The exam page wires choice changes to the autosave endpoint."""
+
+    def test_page_exposes_autosave_url_and_status_region(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.client.get(reverse("exams:take_attempt", args=[attempt.pk]))
+
+        autosave_url = reverse("exams:autosave_answer", args=[attempt.pk])
+        self.assertContains(response, f'data-autosave-url="{autosave_url}"')
+        self.assertContains(response, 'id="autosave-status"')
+        self.assertContains(response, 'role="status"')
+        self.assertContains(response, "autosaveAnswer(choiceId)")
+
+    def test_no_js_navigation_form_is_unchanged(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.client.get(reverse("exams:take_attempt", args=[attempt.pk]))
+
+        save_url = reverse("exams:save_answer", args=[attempt.pk])
+        self.assertContains(response, f'action="{save_url}"')
+        self.assertContains(response, 'name="question_id"')
+        self.assertContains(response, 'name="choice_id"')
+        self.assertContains(response, 'name="next_question"')
+
+    def test_autosave_accepts_csrf_token_from_the_page(self):
+        attempt = self.create_attempt()
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.student)
+
+        page = client.get(reverse("exams:take_attempt", args=[attempt.pk]))
+        token = re.search(
+            r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()
+        ).group(1)
+        url = reverse("exams:autosave_answer", args=[attempt.pk])
+        data = {"question_id": self.questions[0].pk, "choice_id": self.correct[0].pk}
+
+        self.assertEqual(client.post(url, data).status_code, 403)
+        response = client.post(url, data, HTTP_X_CSRFTOKEN=token)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["saved"])
+        self.assertTrue(
+            Answer.objects.filter(
+                attempt=attempt, selected_choice=self.correct[0]
+            ).exists()
+        )

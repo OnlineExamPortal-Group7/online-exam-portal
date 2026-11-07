@@ -83,6 +83,21 @@
     cursor: not-allowed;
   }
 
+  .autosave-status {
+    min-height: 1.5rem;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    color: #555;
+  }
+
+  .autosave-status.saved {
+    color: #146c43;
+  }
+
+  .autosave-status.error {
+    color: #842029;
+  }
+
   #timeout-message {
     display: none;
     margin: 1rem 0;
@@ -144,7 +159,8 @@
     <form
       id="answer-form"
       method="post"
-      action="{% url 'exams:save_answer' attempt.pk %}">
+      action="{% url 'exams:save_answer' attempt.pk %}"
+      data-autosave-url="{% url 'exams:autosave_answer' attempt.pk %}">
 
       {% csrf_token %}
 
@@ -193,6 +209,9 @@
         {% endfor %}
 
       </section>
+
+      <p id="autosave-status" class="autosave-status"
+         role="status" aria-live="polite"></p>
 
       <div class="exam-actions">
 
@@ -273,6 +292,97 @@
 
   function updateSelectedChoice(choiceId) {
     document.getElementById("choice-id").value = choiceId;
+    autosaveAnswer(choiceId);
+  }
+
+  // Auto-save (OEP-F-022): send each choice to the server as soon as it is
+  // picked, so it survives a browser crash. Navigation still saves through
+  // the normal form POST, which also works without JavaScript.
+  const autosaveStatus = document.getElementById("autosave-status");
+  const AUTOSAVE_RETRY_DELAYS_MS = [1000, 2000, 4000];
+  let autosaveSequence = 0;
+
+  function showAutosaveStatus(text, state) {
+    if (!autosaveStatus) {
+      return;
+    }
+    autosaveStatus.textContent = text;
+    autosaveStatus.classList.remove("saved", "error");
+    if (state) {
+      autosaveStatus.classList.add(state);
+    }
+  }
+
+  function autosaveAnswer(choiceId) {
+    if (submissionStarted || !answerForm) {
+      return;
+    }
+    autosaveSequence += 1;
+    sendAutosave(choiceId, autosaveSequence, 0);
+  }
+
+  function sendAutosave(choiceId, sequence, attempt) {
+    // A newer choice supersedes this one; only the latest is saved and reported.
+    if (submissionStarted || sequence !== autosaveSequence) {
+      return;
+    }
+
+    const body = new FormData();
+    body.append(
+      "question_id",
+      answerForm.querySelector("[name=question_id]").value
+    );
+    body.append("choice_id", choiceId);
+
+    const csrfToken =
+      answerForm.querySelector("[name=csrfmiddlewaretoken]").value;
+
+    showAutosaveStatus("Saving...", null);
+
+    fetch(answerForm.dataset.autosaveUrl, {
+      method: "POST",
+      body: body,
+      headers: { "X-CSRFToken": csrfToken },
+      credentials: "same-origin",
+    })
+      .then(function(response) {
+        if (sequence !== autosaveSequence) {
+          return;
+        }
+        if (response.ok) {
+          showAutosaveStatus("Answer saved.", "saved");
+        } else if (response.status === 409) {
+          // The server says the deadline has passed.
+          submitAutomatically();
+        } else if (response.status >= 500) {
+          retryAutosave(choiceId, sequence, attempt);
+        } else {
+          showAutosaveStatus(
+            "Answer not saved. Use Save & Next to try again.",
+            "error"
+          );
+        }
+      })
+      .catch(function() {
+        retryAutosave(choiceId, sequence, attempt);
+      });
+  }
+
+  function retryAutosave(choiceId, sequence, attempt) {
+    if (sequence !== autosaveSequence) {
+      return;
+    }
+    if (attempt >= AUTOSAVE_RETRY_DELAYS_MS.length) {
+      showAutosaveStatus(
+        "Answer not saved. Check your connection and use Save & Next.",
+        "error"
+      );
+      return;
+    }
+    showAutosaveStatus("Connection problem, retrying...", "error");
+    setTimeout(function() {
+      sendAutosave(choiceId, sequence, attempt + 1);
+    }, AUTOSAVE_RETRY_DELAYS_MS[attempt]);
   }
 
   function disableExamControls() {
