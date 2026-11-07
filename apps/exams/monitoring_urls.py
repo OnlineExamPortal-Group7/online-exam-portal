@@ -10,4 +10,9 @@ urlpatterns = [
         monitoring.MonitorExamDetailView.as_view(),
         name="monitor_detail",
     ),
+    path(
+        "<int:pk>/status/",
+        monitoring.MonitorExamStatusView.as_view(),
+        name="monitor_status",
+    ),
 ]

@@ -364,3 +364,91 @@ class MonitorPageContentTests(MonitoringTestBase):
         self.assertContains(response, '<tr data-status="timed_out">')
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, ExamAttempt.Status.IN_PROGRESS)
+
+
+class MonitorStatusEndpointTests(MonitoringTestBase):
+    """GET exams/monitor/<id>/status/ returns the snapshot as JSON."""
+
+    def status_url(self, exam=None):
+        return reverse("exams:monitor_status", args=[(exam or self.exam).pk])
+
+    def get_status(self, user, exam=None):
+        self.client.force_login(user)
+        return self.client.get(self.status_url(exam))
+
+    def test_returns_counts_and_rows_as_json(self):
+        self.attempt(self.students[1], status=ExamAttempt.Status.SUBMITTED)
+
+        response = self.get_status(self.instructor)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        data = response.json()
+        self.assertEqual(data["exam_id"], self.exam.pk)
+        self.assertTrue(data["is_live"])
+        self.assertEqual(data["total"], 3)
+        self.assertEqual(
+            data["counts"],
+            {"not_started": 2, "in_progress": 0, "submitted": 1, "timed_out": 0},
+        )
+        self.assertIn("generated_at", data)
+        self.assertRegex(data["generated_display"], r"^\d{2}:\d{2}:\d{2}$")
+        row = data["rows"][1]
+        self.assertEqual(row["username"], "mon_student2")
+        self.assertEqual(row["status"], "submitted")
+        self.assertEqual(row["status_label"], "Submitted")
+        self.assertTrue(row["enrolled"])
+        self.assertIsNotNone(row["started_at"])
+        self.assertIsNotNone(row["submitted_display"])
+        self.assertIsNone(data["rows"][0]["started_at"])
+
+    def test_response_is_not_cached(self):
+        response = self.get_status(self.instructor)
+
+        self.assertIn("no-cache", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
+
+    def test_each_status_change_shows_on_the_next_request(self):
+        student = self.students[0]
+
+        def status_of_student():
+            rows = self.get_status(self.instructor).json()["rows"]
+            return next(r["status"] for r in rows if r["username"] == student.username)
+
+        self.assertEqual(status_of_student(), "not_started")
+        attempt = self.attempt(student)
+        self.assertEqual(status_of_student(), "in_progress")
+        attempt.status = ExamAttempt.Status.SUBMITTED
+        attempt.submitted_at = timezone.now()
+        attempt.save(update_fields=["status", "submitted_at"])
+        self.assertEqual(status_of_student(), "submitted")
+
+    def test_access_rules_match_the_detail_page(self):
+        self.assertEqual(self.get_status(self.admin).status_code, 200)
+        self.assertEqual(self.get_status(self.admin, self.other_exam).status_code, 200)
+        self.assertEqual(self.get_status(self.other_instructor).status_code, 404)
+        self.assertEqual(self.get_status(self.students[0]).status_code, 403)
+        self.client.logout()
+        self.assertEqual(self.client.get(self.status_url()).status_code, 302)
+
+    def test_only_get_is_allowed(self):
+        self.client.force_login(self.instructor)
+
+        self.assertEqual(self.client.post(self.status_url()).status_code, 405)
+
+    def test_endpoint_is_read_only_and_query_count_is_fixed(self):
+        attempt = self.attempt(
+            self.students[0], deadline=timezone.now() - timedelta(seconds=1)
+        )
+        self.client.force_login(self.instructor)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(self.status_url())
+
+        self.assertEqual(response.json()["counts"]["timed_out"], 1)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.IN_PROGRESS)
+        queries = data_queries(captured)
+        # Session, user, exam, enrolled students, attempts.
+        self.assertEqual(len(queries), 5, "\n".join(queries))
+        self.assertTrue(all(sql.lstrip().upper().startswith("SELECT") for sql in queries))

@@ -7,8 +7,12 @@ Monitoring is read-only: an attempt past its deadline that nobody has closed yet
 shown as timed out, but it is not written. Timing out and scoring still happen in
 `expire_attempt_if_needed` and `results.services.finalize_overdue_attempts`.
 """
+from django.http import JsonResponse
 from django.utils import timezone
-from django.views.generic import DetailView, ListView
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
+from django.views.generic import DetailView, ListView, View
+from django.views.generic.detail import SingleObjectMixin
 
 from apps.accounts.models import User
 from apps.accounts.permissions import RoleRequiredMixin
@@ -163,3 +167,49 @@ class MonitorExamDetailView(MonitorAccessMixin, DetailView):
             ],
         )
         return context
+
+
+def _iso(value):
+    return value.isoformat() if value else None
+
+
+def _clock(value):
+    """Local wall-clock time, formatted like the detail page (H:M:S)."""
+    return timezone.localtime(value).strftime("%H:%M:%S") if value else None
+
+
+def snapshot_as_json(snapshot):
+    """JSON-safe form of monitor_snapshot, used by the page's polling."""
+    return {
+        "exam_id": snapshot["exam"].pk,
+        "generated_at": _iso(snapshot["generated_at"]),
+        "generated_display": _clock(snapshot["generated_at"]),
+        "is_live": snapshot["is_live"],
+        "total": snapshot["total"],
+        "counts": snapshot["counts"],
+        "rows": [
+            {
+                "username": row["student"].username,
+                "name": row["student"].get_full_name(),
+                "enrolled": row["enrolled"],
+                "status": row["status"],
+                "status_label": row["status_label"],
+                "started_at": _iso(row["started_at"]),
+                "started_display": _clock(row["started_at"]),
+                "submitted_at": _iso(row["submitted_at"]),
+                "submitted_display": _clock(row["submitted_at"]),
+            }
+            for row in snapshot["rows"]
+        ],
+    }
+
+
+@method_decorator(never_cache, name="dispatch")
+class MonitorExamStatusView(MonitorAccessMixin, SingleObjectMixin, View):
+    """GET only: current monitoring snapshot as JSON, polled by the detail page."""
+
+    http_method_names = ["get"]
+
+    def get(self, request, *args, **kwargs):
+        exam = self.get_object()
+        return JsonResponse(snapshot_as_json(monitor_snapshot(exam)))
