@@ -116,6 +116,45 @@ def expire_attempt_if_needed(attempt):
     return False
 
 
+def _parse_id(value):
+    """Return value as a positive int, or None if it is missing or malformed."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _store_answer(attempt, question_id, choice_id):
+    """Save (or clear) the student's choice for one question of an active attempt.
+
+    The question must belong to the attempt's exam and the choice to that question,
+    otherwise Http404 is raised. An empty choice_id clears the saved choice.
+    Callers must hold a select_for_update lock on the attempt and have checked it is
+    still in progress (OEP-F-022).
+    """
+    question = get_object_or_404(
+        Question,
+        pk=_parse_id(question_id),
+        exam_usages__exam=attempt.exam,
+    )
+
+    choice = None
+    if choice_id:
+        choice = get_object_or_404(
+            Choice,
+            pk=_parse_id(choice_id),
+            question=question,
+        )
+
+    answer, _ = Answer.objects.update_or_create(
+        attempt=attempt,
+        question=question,
+        defaults={"selected_choice": choice},
+    )
+    return answer
+
+
 @login_required
 def start_attempt(request, exam_id):
     """Start an exam or resume the student's existing attempt."""
@@ -286,26 +325,10 @@ def save_answer(request, attempt_id):
                 "This attempt is not active."
             )
 
-        question = get_object_or_404(
-            Question,
-            pk=request.POST.get("question_id"),
-            exam_usages__exam=attempt.exam,
-        )
-
-        choice_id = request.POST.get("choice_id")
-        choice = None
-
-        if choice_id:
-            choice = get_object_or_404(
-                Choice,
-                pk=choice_id,
-                question=question,
-            )
-
-        Answer.objects.update_or_create(
-            attempt=attempt,
-            question=question,
-            defaults={"selected_choice": choice},
+        _store_answer(
+            attempt,
+            request.POST.get("question_id"),
+            request.POST.get("choice_id"),
         )
 
         try:
