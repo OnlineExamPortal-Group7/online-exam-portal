@@ -438,6 +438,20 @@ def submit_attempt(request, attempt_id):
             )
             return redirect("accounts:student_dashboard")
 
+        # Keep the choice on the current question that the student had not yet
+        # navigated away from (OEP-F-022). Only a real choice is stored, so a stale
+        # or empty field never clears an answer that is already saved, and a bad id
+        # never blocks the submission itself.
+        if request.POST.get("question_id") and request.POST.get("choice_id"):
+            try:
+                _store_answer(
+                    attempt,
+                    request.POST["question_id"],
+                    request.POST["choice_id"],
+                )
+            except Http404:
+                pass
+
         attempt.status = ExamAttempt.Status.SUBMITTED
         attempt.submitted_at = timezone.now()
         attempt.save(update_fields=["status", "submitted_at"])

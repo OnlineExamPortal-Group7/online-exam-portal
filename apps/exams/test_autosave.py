@@ -304,3 +304,90 @@ class AutosavePageTests(AutosaveTestBase):
                 attempt=attempt, selected_choice=self.correct[0]
             ).exists()
         )
+
+
+class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
+    """Submitting keeps the choice on the question the student was viewing."""
+
+    def submit(self, attempt, data):
+        return self.client.post(
+            reverse("exams:submit_attempt", args=[attempt.pk]), data
+        )
+
+    def test_manual_submit_stores_and_scores_current_choice(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        response = self.submit(
+            attempt,
+            {"question_id": self.questions[1].pk, "choice_id": self.correct[1].pk},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.SUBMITTED)
+        self.assertTrue(
+            Answer.objects.filter(
+                attempt=attempt, selected_choice=self.correct[1]
+            ).exists()
+        )
+        self.assertEqual(attempt.result.score, self.questions[1].marks)
+
+    def test_empty_choice_on_submit_does_not_clear_saved_answer(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+        )
+        self.client.force_login(self.student)
+
+        self.submit(attempt, {"question_id": self.questions[0].pk, "choice_id": ""})
+
+        answer = Answer.objects.get(attempt=attempt, question=self.questions[0])
+        self.assertEqual(answer.selected_choice_id, self.correct[0].pk)
+
+    def test_invalid_choice_on_submit_still_submits(self):
+        attempt = self.create_attempt()
+        self.client.force_login(self.student)
+
+        self.submit(
+            attempt,
+            {"question_id": self.questions[0].pk, "choice_id": self.correct[1].pk},
+        )
+
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.SUBMITTED)
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+        self.assertEqual(attempt.result.score, 0)
+
+    def test_submit_after_deadline_ignores_carried_choice(self):
+        attempt = self.create_attempt(deadline=timezone.now() - timedelta(seconds=1))
+        self.client.force_login(self.student)
+
+        self.submit(
+            attempt,
+            {"question_id": self.questions[0].pk, "choice_id": self.correct[0].pk},
+        )
+
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, ExamAttempt.Status.TIMED_OUT)
+        self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
+        self.assertEqual(attempt.result.score, 0)
+
+    def test_submit_form_carries_current_question_and_saved_choice(self):
+        attempt = self.create_attempt()
+        Answer.objects.create(
+            attempt=attempt, question=self.questions[0], selected_choice=self.wrong[0]
+        )
+        self.client.force_login(self.student)
+
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk]) + "?q=0"
+        )
+
+        content = response.content.decode()
+        submit_form = content[content.index('id="submit-form"'):]
+        self.assertIn(f'name="question_id" value="{self.questions[0].pk}"', submit_form)
+        self.assertRegex(
+            submit_form,
+            rf'id="submit-choice-id"\s+value="{self.wrong[0].pk}"',
+        )

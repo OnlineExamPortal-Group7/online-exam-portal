@@ -266,6 +266,15 @@
 
     {% csrf_token %}
 
+    {% if current_question %}
+      <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+      <input
+        type="hidden"
+        name="choice_id"
+        id="submit-choice-id"
+        value="{{ current_question.selected_choice_id|default_if_none:'' }}">
+    {% endif %}
+
     <button type="submit" id="submit-button">
 
       Submit exam
@@ -292,6 +301,13 @@
 
   function updateSelectedChoice(choiceId) {
     document.getElementById("choice-id").value = choiceId;
+
+    // Manual and automatic submit carry the current choice too.
+    const submitChoice = document.getElementById("submit-choice-id");
+    if (submitChoice) {
+      submitChoice.value = choiceId;
+    }
+
     autosaveAnswer(choiceId);
   }
 
