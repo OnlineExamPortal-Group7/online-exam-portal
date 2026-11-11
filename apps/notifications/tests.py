@@ -478,3 +478,50 @@ class EmailNotificationTests(TestCase):
         )
         self.assertEqual(notification.attempt_count, 0)
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_active_worker_cannot_be_reclaimed_while_sending(self):
+        notification = self.create_notification()
+        worker_b_result = {}
+
+        def simulate_slow_email_send(*args, **kwargs):
+            # Simulate Worker A taking longer than 15 minutes.
+            EmailNotification.objects.filter(
+                pk=notification.pk
+            ).update(
+                processing_started_at=(
+                    timezone.now() - timedelta(minutes=20)
+                )
+            )
+
+            # Worker B attempts stale notification recovery.
+            worker_b_result["recovered"] = (
+                recover_stale_notifications()
+            )
+
+            # Worker B attempts to send the same notification.
+            worker_b_result["sent"] = send_notification(
+                notification
+            )
+
+            # Worker A completes its email operation.
+            return 1
+
+        with patch(
+            "apps.notifications.services.send_mail",
+            side_effect=simulate_slow_email_send,
+        ) as mocked_send_mail:
+            worker_a_result = send_notification(notification)
+
+        notification.refresh_from_db()
+
+        self.assertTrue(worker_a_result)
+        self.assertEqual(worker_b_result["recovered"], 0)
+        self.assertFalse(worker_b_result["sent"])
+        self.assertEqual(mocked_send_mail.call_count, 1)
+
+        self.assertEqual(
+            notification.status,
+            EmailNotification.Status.SENT,
+        )
+        self.assertIsNone(notification.claim_token)
+        self.assertIsNone(notification.lease_expires_at)
