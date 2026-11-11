@@ -24,6 +24,11 @@ urlpatterns = [
         name="save_answer",
     ),
     path(
+        "attempt/<int:attempt_id>/autosave/",
+        views.autosave_answer,
+        name="autosave_answer",
+    ),
+    path(
         "attempt/<int:attempt_id>/submit/",
         views.submit_attempt,
         name="submit_attempt",

@@ -21,6 +21,7 @@ STUDENT_ALLOWED_EXAM_URLS = {
     "exams:start_attempt",
     "exams:take_attempt",
     "exams:save_answer",
+    "exams:autosave_answer",
     "exams:submit_attempt",
 }
 

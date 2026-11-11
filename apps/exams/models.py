@@ -197,6 +197,9 @@ class Answer(models.Model):
         related_name="selected_answers",
     )
     saved_at = models.DateTimeField(auto_now=True)
+    # Highest autosave sequence number stored for this answer. An autosave with a
+    # number that is not higher arrived out of order and is ignored (OEP-F-022).
+    autosave_seq = models.PositiveIntegerField(default=0)
 
     class Meta:
         constraints = [

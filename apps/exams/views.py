@@ -4,10 +4,13 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
-from django.http import HttpResponseForbidden
+from django.db import IntegrityError, models, transaction
+from django.db.models import F
+from django.db.models.functions import Greatest
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from apps.accounts.models import User
 from apps.accounts.permissions import role_required
@@ -114,6 +117,116 @@ def expire_attempt_if_needed(attempt):
         return True
 
     return False
+
+
+def _parse_id(value):
+    """Return value as a positive int, or None if it is missing or malformed."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+# Largest value a PositiveIntegerField holds on every supported database.
+MAX_AUTOSAVE_SEQ = 2147483647
+
+
+def _parse_seq(value):
+    """Return the autosave sequence number, or None if none was sent.
+
+    Raises ValueError if a number was sent but is not an integer from 1 to
+    MAX_AUTOSAVE_SEQ.
+    """
+    if value is None or value == "":
+        return None
+    seq = int(value)
+    if not 1 <= seq <= MAX_AUTOSAVE_SEQ:
+        raise ValueError("autosave sequence out of range")
+    return seq
+
+
+def _resolve_answer_target(attempt, question_id, choice_id):
+    """Return the (question, choice) pair a save refers to.
+
+    The question must belong to the attempt's exam and the choice to that question,
+    otherwise Http404 is raised. An empty choice_id gives choice None (clear).
+    """
+    question = get_object_or_404(
+        Question,
+        pk=_parse_id(question_id),
+        exam_usages__exam=attempt.exam,
+    )
+
+    choice = None
+    if choice_id:
+        choice = get_object_or_404(
+            Choice,
+            pk=_parse_id(choice_id),
+            question=question,
+        )
+
+    return question, choice
+
+
+def _write_answer(attempt, question, choice, seq, newer_only):
+    """Write the student's choice and return its saved_at, or None if it is stale.
+
+    newer_only=True (versioned autosave): write only if seq is higher than the
+    stored autosave_seq, and store seq. newer_only=False (form save or unversioned
+    autosave): always write, and raise the stored number to seq but never lower it.
+    The sequence check and the write are a single UPDATE, so an older request that
+    reaches the database after a newer one cannot overwrite it (OEP-F-022).
+    """
+    rows = Answer.objects.filter(attempt=attempt, question=question)
+    if newer_only:
+        rows = rows.filter(autosave_seq__lt=seq)
+        new_seq = seq
+    else:
+        new_seq = Greatest(
+            F("autosave_seq"), seq, output_field=models.PositiveIntegerField()
+        )
+    saved_at = timezone.now()
+    values = {
+        "selected_choice": choice,
+        "saved_at": saved_at,
+        "autosave_seq": new_seq,
+    }
+
+    if rows.update(**values):
+        return saved_at
+
+    try:
+        with transaction.atomic():
+            answer = Answer.objects.create(
+                attempt=attempt,
+                question=question,
+                selected_choice=choice,
+                autosave_seq=seq,
+            )
+        return answer.saved_at
+    except IntegrityError:
+        # The row exists after all: another request created it first, or (for
+        # newer_only) its stored number is not lower than seq. Retry the guarded
+        # update once; if it still matches nothing, this save is stale.
+        return saved_at if rows.update(**values) else None
+
+
+def _store_answer(attempt, question_id, choice_id, seq=None):
+    """Save (or clear) the choice from a form POST (navigation or submit).
+
+    Form saves always write. seq is the page's latest autosave number; the stored
+    number is raised to it so autosaves still in flight from that page are stale.
+    A missing or malformed seq leaves the stored number unchanged.
+    Callers must hold a select_for_update lock on the attempt and have checked it is
+    still in progress (OEP-F-022).
+    """
+    question, choice = _resolve_answer_target(attempt, question_id, choice_id)
+    try:
+        seq = _parse_seq(seq) or 0
+    except (TypeError, ValueError):
+        seq = 0
+    _write_answer(attempt, question, choice, seq, newer_only=False)
 
 
 @login_required
@@ -223,17 +336,36 @@ def take_attempt(request, attempt_id):
     ]
 
     saved_answers = {
-        answer.question_id: answer.selected_choice_id
+        answer.question_id: answer
         for answer in attempt.answers.all()
     }
 
     for question in questions:
-        question.selected_choice_id = saved_answers.get(question.pk)
+        answer = saved_answers.get(question.pk)
+        question.selected_choice_id = answer.selected_choice_id if answer else None
+        # The page continues autosave numbering from here after a reload.
+        question.autosave_seq = answer.autosave_seq if answer else 0
 
-    try:
-        question_index = int(request.GET.get("q", "0"))
-    except (TypeError, ValueError):
-        question_index = 0
+    answered_count = sum(
+        1 for question in questions if question.selected_choice_id is not None
+    )
+
+    if "q" in request.GET:
+        try:
+            question_index = int(request.GET["q"])
+        except (TypeError, ValueError):
+            question_index = 0
+    else:
+        # Opening or reloading the attempt (e.g. after a browser crash) resumes
+        # at the first unanswered question (OEP-F-022).
+        question_index = next(
+            (
+                index
+                for index, question in enumerate(questions)
+                if question.selected_choice_id is None
+            ),
+            0,
+        )
 
     if questions:
         question_index = max(
@@ -253,6 +385,7 @@ def take_attempt(request, attempt_id):
             "current_question": current_question,
             "question_index": question_index,
             "question_count": len(questions),
+            "answered_count": answered_count,
             "remaining_seconds": remaining_seconds,
         },
     )
@@ -286,26 +419,11 @@ def save_answer(request, attempt_id):
                 "This attempt is not active."
             )
 
-        question = get_object_or_404(
-            Question,
-            pk=request.POST.get("question_id"),
-            exam_usages__exam=attempt.exam,
-        )
-
-        choice_id = request.POST.get("choice_id")
-        choice = None
-
-        if choice_id:
-            choice = get_object_or_404(
-                Choice,
-                pk=choice_id,
-                question=question,
-            )
-
-        Answer.objects.update_or_create(
-            attempt=attempt,
-            question=question,
-            defaults={"selected_choice": choice},
+        _store_answer(
+            attempt,
+            request.POST.get("question_id"),
+            request.POST.get("choice_id"),
+            request.POST.get("autosave_seq"),
         )
 
         try:
@@ -330,6 +448,93 @@ def save_answer(request, attempt_id):
     ).url
 
     return redirect(f"{attempt_url}?q={next_question}")
+
+
+@login_required
+@require_POST
+def autosave_answer(request, attempt_id):
+    """Save one answer in the background and acknowledge it as JSON (OEP-F-022).
+
+    Called by the exam page whenever the student picks a choice, so the answer is
+    on the server even if the browser crashes before the next navigation.
+
+    Each request carries a per-question sequence number "seq". A request whose
+    number is not higher than the stored one arrived out of order and is answered
+    with 200 {"status": "stale"} so the page does not retry it. A request without
+    seq is saved unconditionally and leaves the stored number unchanged.
+    """
+    if request.user.role != User.Role.STUDENT:
+        raise PermissionDenied
+
+    with transaction.atomic():
+        attempt = get_object_or_404(
+            ExamAttempt.objects.select_for_update().select_related("exam"),
+            pk=attempt_id,
+            student=request.user,
+        )
+
+        if expire_attempt_if_needed(attempt):
+            return JsonResponse(
+                {"saved": False, "error": "The exam deadline has passed."},
+                status=409,
+            )
+
+        if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+            return JsonResponse(
+                {"saved": False, "error": "This attempt is not active."},
+                status=403,
+            )
+
+        try:
+            seq = _parse_seq(request.POST.get("seq"))
+        except ValueError:
+            return JsonResponse(
+                {"saved": False, "error": "Invalid sequence number."},
+                status=400,
+            )
+
+        try:
+            question, choice = _resolve_answer_target(
+                attempt,
+                request.POST.get("question_id"),
+                request.POST.get("choice_id"),
+            )
+        except Http404:
+            return JsonResponse(
+                {"saved": False, "error": "Invalid question or choice."},
+                status=400,
+            )
+
+        if seq is None:
+            saved_at = _write_answer(attempt, question, choice, 0, newer_only=False)
+        else:
+            saved_at = _write_answer(attempt, question, choice, seq, newer_only=True)
+
+        if saved_at is None:
+            stored_seq = (
+                Answer.objects.filter(attempt=attempt, question=question)
+                .values_list("autosave_seq", flat=True)
+                .first()
+            )
+            return JsonResponse(
+                {
+                    "saved": False,
+                    "status": "stale",
+                    "question_id": question.pk,
+                    "seq": stored_seq,
+                }
+            )
+
+    payload = {
+        "saved": True,
+        "status": "saved",
+        "question_id": question.pk,
+        "choice_id": choice.pk if choice else None,
+        "saved_at": saved_at.isoformat(),
+    }
+    if seq is not None:
+        payload["seq"] = seq
+    return JsonResponse(payload)
 
 
 @login_required
@@ -361,6 +566,21 @@ def submit_attempt(request, attempt_id):
                 "This attempt is no longer active.",
             )
             return redirect("accounts:student_dashboard")
+
+        # Keep the choice on the current question that the student had not yet
+        # navigated away from (OEP-F-022). Only a real choice is stored, so a stale
+        # or empty field never clears an answer that is already saved, and a bad id
+        # never blocks the submission itself.
+        if request.POST.get("question_id") and request.POST.get("choice_id"):
+            try:
+                _store_answer(
+                    attempt,
+                    request.POST["question_id"],
+                    request.POST["choice_id"],
+                    request.POST.get("autosave_seq"),
+                )
+            except Http404:
+                pass
 
         attempt.status = ExamAttempt.Status.SUBMITTED
         attempt.submitted_at = timezone.now()

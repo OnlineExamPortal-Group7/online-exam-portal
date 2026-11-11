@@ -57,6 +57,11 @@
     cursor: pointer;
   }
 
+  .question-nav button.answered {
+    background: #d1e7dd;
+    border-color: #146c43;
+  }
+
   .question-nav button.active {
     background: #1d4ed8;
     color: #fff;
@@ -81,6 +86,21 @@
   button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .autosave-status {
+    min-height: 1.5rem;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    color: #555;
+  }
+
+  .autosave-status.saved {
+    color: #146c43;
+  }
+
+  .autosave-status.error {
+    color: #842029;
   }
 
   #timeout-message {
@@ -122,14 +142,19 @@
       Question {{ question_index|add:1 }} of {{ question_count }}
     </p>
 
+    <p id="answered-summary">
+      <span id="answered-count">{{ answered_count }}</span>
+      of {{ question_count }} answered
+    </p>
+
     <nav class="question-nav" aria-label="Question navigation">
 
       {% for question in questions %}
 
         <button
           type="button"
-          class="{% if forloop.counter0 == question_index %}active{% endif %}"
-          aria-label="Go to question {{ forloop.counter }}"
+          class="{% if forloop.counter0 == question_index %}active{% endif %}{% if question.selected_choice_id is not None %} answered{% endif %}"
+          aria-label="Go to question {{ forloop.counter }}{% if question.selected_choice_id is not None %} (answered){% endif %}"
           aria-current="{% if forloop.counter0 == question_index %}step{% endif %}"
           onclick="navigateToQuestion({{ forloop.counter0 }})">
 
@@ -144,9 +169,17 @@
     <form
       id="answer-form"
       method="post"
-      action="{% url 'exams:save_answer' attempt.pk %}">
+      action="{% url 'exams:save_answer' attempt.pk %}"
+      data-autosave-url="{% url 'exams:autosave_answer' attempt.pk %}"
+      data-autosave-seq="{{ current_question.autosave_seq }}">
 
       {% csrf_token %}
+
+      <input
+        type="hidden"
+        name="autosave_seq"
+        class="autosave-seq"
+        value="{{ current_question.autosave_seq }}">
 
       <input
         type="hidden"
@@ -193,6 +226,9 @@
         {% endfor %}
 
       </section>
+
+      <p id="autosave-status" class="autosave-status"
+         role="status" aria-live="polite"></p>
 
       <div class="exam-actions">
 
@@ -247,6 +283,20 @@
 
     {% csrf_token %}
 
+    {% if current_question %}
+      <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+      <input
+        type="hidden"
+        name="choice_id"
+        id="submit-choice-id"
+        value="{{ current_question.selected_choice_id|default_if_none:'' }}">
+      <input
+        type="hidden"
+        name="autosave_seq"
+        class="autosave-seq"
+        value="{{ current_question.autosave_seq }}">
+    {% endif %}
+
     <button type="submit" id="submit-button">
 
       Submit exam
@@ -273,6 +323,164 @@
 
   function updateSelectedChoice(choiceId) {
     document.getElementById("choice-id").value = choiceId;
+
+    // Manual and automatic submit carry the current choice too.
+    const submitChoice = document.getElementById("submit-choice-id");
+    if (submitChoice) {
+      submitChoice.value = choiceId;
+    }
+
+    autosaveAnswer(choiceId);
+  }
+
+  // Auto-save (OEP-F-022): send each choice to the server as soon as it is
+  // picked, so it survives a browser crash. Navigation still saves through
+  // the normal form POST, which also works without JavaScript.
+  const autosaveStatus = document.getElementById("autosave-status");
+  const AUTOSAVE_RETRY_DELAYS_MS = [1000, 2000, 4000];
+
+  // Per-question sequence number checked by the server, so a request that
+  // arrives after a newer one is ignored. It continues from the stored number
+  // so saves made after a reload are still accepted.
+  let autosaveSequence = answerForm
+    ? Number(answerForm.dataset.autosaveSeq) || 0
+    : 0;
+
+  function syncSequenceFields() {
+    // Save & Next and Submit carry the latest number, so autosaves still in
+    // flight from this page cannot overwrite the answer they save.
+    document.querySelectorAll(".autosave-seq").forEach(function(field) {
+      field.value = autosaveSequence;
+    });
+  }
+
+  function showAutosaveStatus(text, state) {
+    if (!autosaveStatus) {
+      return;
+    }
+    autosaveStatus.textContent = text;
+    autosaveStatus.classList.remove("saved", "error");
+    if (state) {
+      autosaveStatus.classList.add(state);
+    }
+  }
+
+  function autosaveAnswer(choiceId) {
+    if (submissionStarted || !answerForm) {
+      return;
+    }
+    autosaveSequence += 1;
+    syncSequenceFields();
+    sendAutosave(choiceId, autosaveSequence, 0, false);
+  }
+
+  function sendAutosave(choiceId, sequence, attempt, resynced) {
+    // A newer choice supersedes this one; only the latest is saved and reported.
+    if (submissionStarted || sequence !== autosaveSequence) {
+      return;
+    }
+
+    const body = new FormData();
+    body.append(
+      "question_id",
+      answerForm.querySelector("[name=question_id]").value
+    );
+    body.append("choice_id", choiceId);
+    body.append("seq", sequence);
+
+    const csrfToken =
+      answerForm.querySelector("[name=csrfmiddlewaretoken]").value;
+
+    showAutosaveStatus("Saving...", null);
+
+    fetch(answerForm.dataset.autosaveUrl, {
+      method: "POST",
+      body: body,
+      headers: { "X-CSRFToken": csrfToken },
+      credentials: "same-origin",
+    })
+      .then(function(response) {
+        if (sequence !== autosaveSequence) {
+          return;
+        }
+        if (response.ok) {
+          return response.json().then(function(data) {
+            handleAutosaveResult(data, choiceId, sequence, resynced);
+          });
+        } else if (response.status === 409) {
+          // The server says the deadline has passed.
+          submitAutomatically();
+        } else if (response.status >= 500) {
+          retryAutosave(choiceId, sequence, attempt, resynced);
+        } else {
+          showAutosaveStatus(
+            "Answer not saved. Use Save & Next to try again.",
+            "error"
+          );
+        }
+      })
+      .catch(function() {
+        retryAutosave(choiceId, sequence, attempt, resynced);
+      });
+  }
+
+  function handleAutosaveResult(data, choiceId, sequence, resynced) {
+    if (sequence !== autosaveSequence) {
+      return;
+    }
+    if (data.status !== "stale") {
+      showAutosaveStatus("Answer saved.", "saved");
+      markCurrentQuestionAnswered();
+      return;
+    }
+    // Stale but still our latest choice: the server holds an equal or higher
+    // number from earlier (e.g. a request in flight during a reload). Move past
+    // it and send this choice once more; a second stale reply is not retried.
+    if (!resynced && typeof data.seq === "number") {
+      autosaveSequence = Math.max(autosaveSequence, data.seq) + 1;
+      syncSequenceFields();
+      sendAutosave(choiceId, autosaveSequence, 0, true);
+      return;
+    }
+    showAutosaveStatus(
+      "Answer not saved. Use Save & Next to try again.",
+      "error"
+    );
+  }
+
+  function markCurrentQuestionAnswered() {
+    const button = document.querySelector(
+      '.question-nav button[aria-current="step"]'
+    );
+    if (!button || button.classList.contains("answered")) {
+      return;
+    }
+    button.classList.add("answered");
+    button.setAttribute(
+      "aria-label",
+      button.getAttribute("aria-label") + " (answered)"
+    );
+    const counter = document.getElementById("answered-count");
+    if (counter) {
+      counter.textContent = Number(counter.textContent) + 1;
+    }
+  }
+
+  function retryAutosave(choiceId, sequence, attempt, resynced) {
+    if (sequence !== autosaveSequence) {
+      return;
+    }
+    if (attempt >= AUTOSAVE_RETRY_DELAYS_MS.length) {
+      showAutosaveStatus(
+        "Answer not saved. Check your connection and use Save & Next.",
+        "error"
+      );
+      return;
+    }
+    showAutosaveStatus("Connection problem, retrying...", "error");
+    setTimeout(function() {
+      sendAutosave(choiceId, sequence, attempt + 1, resynced);
+    }, AUTOSAVE_RETRY_DELAYS_MS[attempt]);
   }
 
   function disableExamControls() {
