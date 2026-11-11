@@ -170,9 +170,16 @@
       id="answer-form"
       method="post"
       action="{% url 'exams:save_answer' attempt.pk %}"
-      data-autosave-url="{% url 'exams:autosave_answer' attempt.pk %}">
+      data-autosave-url="{% url 'exams:autosave_answer' attempt.pk %}"
+      data-autosave-seq="{{ current_question.autosave_seq }}">
 
       {% csrf_token %}
+
+      <input
+        type="hidden"
+        name="autosave_seq"
+        class="autosave-seq"
+        value="{{ current_question.autosave_seq }}">
 
       <input
         type="hidden"
@@ -283,6 +290,11 @@
         name="choice_id"
         id="submit-choice-id"
         value="{{ current_question.selected_choice_id|default_if_none:'' }}">
+      <input
+        type="hidden"
+        name="autosave_seq"
+        class="autosave-seq"
+        value="{{ current_question.autosave_seq }}">
     {% endif %}
 
     <button type="submit" id="submit-button">
@@ -326,7 +338,21 @@
   // the normal form POST, which also works without JavaScript.
   const autosaveStatus = document.getElementById("autosave-status");
   const AUTOSAVE_RETRY_DELAYS_MS = [1000, 2000, 4000];
-  let autosaveSequence = 0;
+
+  // Per-question sequence number checked by the server, so a request that
+  // arrives after a newer one is ignored. It continues from the stored number
+  // so saves made after a reload are still accepted.
+  let autosaveSequence = answerForm
+    ? Number(answerForm.dataset.autosaveSeq) || 0
+    : 0;
+
+  function syncSequenceFields() {
+    // Save & Next and Submit carry the latest number, so autosaves still in
+    // flight from this page cannot overwrite the answer they save.
+    document.querySelectorAll(".autosave-seq").forEach(function(field) {
+      field.value = autosaveSequence;
+    });
+  }
 
   function showAutosaveStatus(text, state) {
     if (!autosaveStatus) {
@@ -344,10 +370,11 @@
       return;
     }
     autosaveSequence += 1;
-    sendAutosave(choiceId, autosaveSequence, 0);
+    syncSequenceFields();
+    sendAutosave(choiceId, autosaveSequence, 0, false);
   }
 
-  function sendAutosave(choiceId, sequence, attempt) {
+  function sendAutosave(choiceId, sequence, attempt, resynced) {
     // A newer choice supersedes this one; only the latest is saved and reported.
     if (submissionStarted || sequence !== autosaveSequence) {
       return;
@@ -359,6 +386,7 @@
       answerForm.querySelector("[name=question_id]").value
     );
     body.append("choice_id", choiceId);
+    body.append("seq", sequence);
 
     const csrfToken =
       answerForm.querySelector("[name=csrfmiddlewaretoken]").value;
@@ -376,13 +404,14 @@
           return;
         }
         if (response.ok) {
-          showAutosaveStatus("Answer saved.", "saved");
-          markCurrentQuestionAnswered();
+          return response.json().then(function(data) {
+            handleAutosaveResult(data, choiceId, sequence, resynced);
+          });
         } else if (response.status === 409) {
           // The server says the deadline has passed.
           submitAutomatically();
         } else if (response.status >= 500) {
-          retryAutosave(choiceId, sequence, attempt);
+          retryAutosave(choiceId, sequence, attempt, resynced);
         } else {
           showAutosaveStatus(
             "Answer not saved. Use Save & Next to try again.",
@@ -391,8 +420,32 @@
         }
       })
       .catch(function() {
-        retryAutosave(choiceId, sequence, attempt);
+        retryAutosave(choiceId, sequence, attempt, resynced);
       });
+  }
+
+  function handleAutosaveResult(data, choiceId, sequence, resynced) {
+    if (sequence !== autosaveSequence) {
+      return;
+    }
+    if (data.status !== "stale") {
+      showAutosaveStatus("Answer saved.", "saved");
+      markCurrentQuestionAnswered();
+      return;
+    }
+    // Stale but still our latest choice: the server holds an equal or higher
+    // number from earlier (e.g. a request in flight during a reload). Move past
+    // it and send this choice once more; a second stale reply is not retried.
+    if (!resynced && typeof data.seq === "number") {
+      autosaveSequence = Math.max(autosaveSequence, data.seq) + 1;
+      syncSequenceFields();
+      sendAutosave(choiceId, autosaveSequence, 0, true);
+      return;
+    }
+    showAutosaveStatus(
+      "Answer not saved. Use Save & Next to try again.",
+      "error"
+    );
   }
 
   function markCurrentQuestionAnswered() {
@@ -413,7 +466,7 @@
     }
   }
 
-  function retryAutosave(choiceId, sequence, attempt) {
+  function retryAutosave(choiceId, sequence, attempt, resynced) {
     if (sequence !== autosaveSequence) {
       return;
     }
@@ -426,7 +479,7 @@
     }
     showAutosaveStatus("Connection problem, retrying...", "error");
     setTimeout(function() {
-      sendAutosave(choiceId, sequence, attempt + 1);
+      sendAutosave(choiceId, sequence, attempt + 1, resynced);
     }, AUTOSAVE_RETRY_DELAYS_MS[attempt]);
   }
 
