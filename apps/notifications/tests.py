@@ -1,4 +1,5 @@
 
+import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -13,7 +14,11 @@ from apps.notifications.models import EmailNotification
 from apps.notifications.services import (
     BASE_RETRY_DELAY_MINUTES,
     MAX_ATTEMPTS,
+    _claim_notification,
     _email_content,
+    _record_failure,
+    _record_success,
+    _renew_claim,
     process_pending_notifications,
     queue_exam_scheduled_notifications,
     queue_results_published_notifications,
@@ -351,6 +356,97 @@ class EmailNotificationTests(TestCase):
             EmailNotification.Status.PENDING,
         )
         self.assertIsNone(notification.processing_started_at)
+
+    def test_active_worker_lease_is_not_recovered(self):
+        claim_token = uuid.uuid4()
+        notification = self.create_notification(
+            status=EmailNotification.Status.PROCESSING,
+            processing_started_at=(
+                timezone.now() - timedelta(minutes=20)
+            ),
+            claim_token=claim_token,
+            lease_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        recovered_count = recover_stale_notifications()
+
+        notification.refresh_from_db()
+
+        self.assertEqual(recovered_count, 0)
+        self.assertEqual(
+            notification.status,
+            EmailNotification.Status.PROCESSING,
+        )
+        self.assertEqual(notification.claim_token, claim_token)
+
+    def test_stale_worker_cannot_update_notification_after_reclaim(self):
+        old_claim_token = uuid.uuid4()
+        notification = self.create_notification(
+            status=EmailNotification.Status.PROCESSING,
+            processing_started_at=(
+                timezone.now() - timedelta(minutes=20)
+            ),
+            claim_token=old_claim_token,
+            lease_expires_at=timezone.now() - timedelta(seconds=1),
+        )
+
+        self.assertEqual(recover_stale_notifications(), 1)
+
+        new_claim = _claim_notification(notification.pk)
+        self.assertIsNotNone(new_claim)
+        self.assertNotEqual(new_claim.claim_token, old_claim_token)
+
+        # The previous worker must not mark the new worker's claim as sent
+        # or schedule a retry after it has lost ownership.
+        _record_success(notification.pk, old_claim_token)
+        _record_failure(
+            notification.pk,
+            old_claim_token,
+            RuntimeError("late failure from old worker"),
+        )
+
+        notification.refresh_from_db()
+        self.assertEqual(
+            notification.status,
+            EmailNotification.Status.PROCESSING,
+        )
+        self.assertEqual(notification.claim_token, new_claim.claim_token)
+
+        _record_success(notification.pk, new_claim.claim_token)
+        notification.refresh_from_db()
+
+        self.assertEqual(
+            notification.status,
+            EmailNotification.Status.SENT,
+        )
+        self.assertIsNone(notification.claim_token)
+        self.assertIsNone(notification.lease_expires_at)
+
+    def test_worker_can_renew_its_own_unexpired_lease(self):
+        claim = _claim_notification(
+            self.create_notification().pk
+        )
+        original_expiry = claim.lease_expires_at
+
+        renewed = _renew_claim(claim.pk, claim.claim_token)
+
+        claim.refresh_from_db()
+
+        self.assertTrue(renewed)
+        self.assertGreater(claim.lease_expires_at, original_expiry)
+
+    def test_worker_cannot_renew_another_workers_lease(self):
+        claim = _claim_notification(
+            self.create_notification().pk
+        )
+
+        original_token = claim.claim_token
+        renewed = _renew_claim(claim.pk, uuid.uuid4())
+
+        claim.refresh_from_db()
+
+        self.assertFalse(renewed)
+        self.assertEqual(claim.claim_token, original_token)
 
     def test_pending_notification_is_processed(self):
         notification = self.create_notification()
