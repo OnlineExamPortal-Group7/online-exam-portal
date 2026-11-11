@@ -39,6 +39,8 @@ class EmailNotification(models.Model):
     next_attempt_at = models.DateTimeField(default=timezone.now)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     processing_started_at = models.DateTimeField(null=True, blank=True)
+    claim_token = models.UUIDField(null=True, blank=True, editable=False)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
