@@ -297,3 +297,21 @@ For other features, use `apps/results/services.py` rather than querying `Result`
 - `publish_results(exam, actor)`: applies the rules above and calls the audit hook.
 - The `results_published` signal (`apps/results/signals.py`) is sent with `exam` and
   `published_by` after a publish is saved (notifications, #25).
+
+## Live exam monitoring
+Instructors and Administrators monitor running exams at `/exams/monitor/` (OEP-F-040), linked
+from the dashboard as "Monitor live exams":
+- The list groups exams into **Live now**, **Upcoming** and **Recently ended**.
+- The exam page at `/exams/monitor/<id>/` shows every enrolled student as **Not started**,
+  **In progress**, **Submitted** or **Timed out**, with counts and start/finish times. Students
+  who attempted but were later unenrolled are still listed, marked "(not enrolled)".
+- The page updates itself every 10 seconds from the JSON endpoint
+  `/exams/monitor/<id>/status/`, so a status change shows within 30 seconds (AC-040). Without
+  JavaScript the page reloads every 15 seconds.
+- Monitoring is read-only. An attempt past its deadline is shown as Timed out, but it is
+  only saved as timed out and scored by the normal timeout path or the result review page.
+- Instructors can monitor exams of the courses they teach (another course's exam gives
+  HTTP 404); Administrators can monitor every exam; Students get HTTP 403.
+
+The status logic is in `apps/exams/monitoring.py`: `monitorable_exams(user)` and
+`monitor_snapshot(exam)` can be reused by other features.

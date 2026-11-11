@@ -6,6 +6,7 @@ app_name = "exams"
 
 urlpatterns = [
     path("questions/", include("apps.exams.question_urls")),
+    path("monitor/", include("apps.exams.monitoring_urls")),
     path("create/", views.create_exam, name="create"),
     path(
         "<int:exam_id>/start/",
