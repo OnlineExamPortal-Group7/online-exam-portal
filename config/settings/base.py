@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # OEP modules (see SRS Section 8, RTM)
+    "apps.notifications.apps.NotificationsConfig",
     "apps.accounts",        # AuthModule
     "apps.exams",           # ExamsModule
     "apps.results",         # ResultsModule
