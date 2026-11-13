@@ -423,12 +423,21 @@ class EmailNotificationTests(TestCase):
         self.assertIsNone(notification.lease_expires_at)
 
     def test_worker_can_renew_its_own_unexpired_lease(self):
-        claim = _claim_notification(
-            self.create_notification().pk
-        )
-        original_expiry = claim.lease_expires_at
+        notification = self.create_notification()
+        initial_time = timezone.now()
 
-        renewed = _renew_claim(claim.pk, claim.claim_token)
+        with patch(
+            "apps.notifications.services.timezone.now",
+            side_effect=[
+                initial_time,
+                initial_time,
+                initial_time + timedelta(seconds=1),
+            ],
+        ):
+            claim = _claim_notification(notification.pk)
+            original_expiry = claim.lease_expires_at
+
+            renewed = _renew_claim(claim.pk, claim.claim_token)
 
         claim.refresh_from_db()
 

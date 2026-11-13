@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -381,7 +382,21 @@ class ServerAuthoritativeTimerTests(ExamCreationTests):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
+            'src="/static/exams/js/take_attempt.js"',
+        )
+
+        js_path = (
+            Path(__file__).resolve().parents[2]
+            / "static"
+            / "exams"
+            / "js"
+            / "take_attempt.js"
+        )
+        js_content = js_path.read_text(encoding="utf-8")
+
+        self.assertIn(
             "Are you sure you want to submit the exam?",
+            js_content,
         )
 
     def test_expired_attempt_cannot_save_answer(self):
@@ -484,12 +499,26 @@ class ServerAuthoritativeTimerTests(ExamCreationTests):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "function submitAutomatically()")
-        self.assertContains(response, "submitForm.submit()")
+        self.assertContains(
+            response,
+            'src="/static/exams/js/take_attempt.js"',
+        )
         self.assertContains(
             response,
             "Your exam time has expired.",
         )
+
+        js_path = (
+            Path(__file__).resolve().parents[2]
+            / "static"
+            / "exams"
+            / "js"
+            / "take_attempt.js"
+        )
+        js_content = js_path.read_text(encoding="utf-8")
+
+        self.assertIn("function submitAutomatically()", js_content)
+        self.assertIn("submitForm.submit()", js_content)
 
     def test_attempt_is_marked_timed_out_at_exact_deadline(self):
         deadline = timezone.now() + timedelta(minutes=5)
