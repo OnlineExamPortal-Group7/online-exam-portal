@@ -1,9 +1,14 @@
+
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Online Exam Portal{% endblock %}</title>
+
+  <link rel="stylesheet" href="{% static 'css/base.css' %}">
+
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -12,15 +17,22 @@
     <nav aria-label="Account">
       {% if user.is_authenticated %}
         <span>{{ user.username }} ({{ user.get_role_display }})</span>
-        <form method="post" action="{% url 'accounts:logout' %}" style="display:inline">
+
+        <form method="post"
+              action="{% url 'accounts:logout' %}"
+              class="logout-form">
           {% csrf_token %}
           <button type="submit">Log out</button>
         </form>
+
       {% else %}
         <a href="{% url 'accounts:login' %}">Log in</a>
       {% endif %}
     </nav>
   </header>
+
   <main>{% block content %}{% endblock %}</main>
+
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -2,6 +2,7 @@
 import re
 from datetime import timedelta
 
+from pathlib import Path
 from django.contrib.auth.models import AnonymousUser
 from django.db import connection
 from django.test import TestCase
@@ -467,11 +468,27 @@ class MonitorAutoRefreshTests(MonitoringTestBase):
 
         status_url = reverse("exams:monitor_status", args=[self.exam.pk])
         self.assertIn(f'data-status-url="{status_url}"', content)
+
         poll_ms = int(re.search(r'data-poll-ms="(\d+)"', content).group(1))
         self.assertLessEqual(poll_ms, 15000)
         self.assertGreater(poll_ms, 0)
+
         self.assertIn('id="monitor-connection" role="status"', content)
-        self.assertIn("fetch(statusUrl", content)
+        self.assertIn(
+            'src="/static/exams/js/monitor_detail.js"',
+            content,
+        )
+
+        js_path = (
+            Path(__file__).resolve().parents[2]
+            / "static"
+            / "exams"
+            / "js"
+            / "monitor_detail.js"
+        )
+        js_content = js_path.read_text(encoding="utf-8")
+
+        self.assertIn("fetch(statusUrl", js_content)
 
     def test_noscript_refresh_is_in_head_and_within_30_seconds(self):
         content = self.get_detail().content.decode()

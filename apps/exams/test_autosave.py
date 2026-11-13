@@ -1,6 +1,9 @@
+
 """Answer auto-save and persistence (OEP-F-022, TC-Exam-03)."""
+
 import re
 from datetime import timedelta
+from pathlib import Path
 
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -56,6 +59,7 @@ class AutosaveTestBase(TestCase):
         cls.questions = []
         cls.correct = []
         cls.wrong = []
+
         for position in (1, 2):
             question = Question.objects.create(
                 course=cls.course,
@@ -63,12 +67,24 @@ class AutosaveTestBase(TestCase):
                 marks=position,
                 created_by=cls.instructor,
             )
-            ExamQuestion.objects.create(exam=cls.exam, question=question, position=position)
+            ExamQuestion.objects.create(
+                exam=cls.exam,
+                question=question,
+                position=position,
+            )
             cls.correct.append(
-                Choice.objects.create(question=question, text="Right", is_correct=True)
+                Choice.objects.create(
+                    question=question,
+                    text="Right",
+                    is_correct=True,
+                )
             )
             cls.wrong.append(
-                Choice.objects.create(question=question, text="Wrong", is_correct=False)
+                Choice.objects.create(
+                    question=question,
+                    text="Wrong",
+                    is_correct=False,
+                )
             )
             cls.questions.append(question)
 
@@ -98,7 +114,11 @@ class StoreAnswerValidationTests(AutosaveTestBase):
         attempt = self.create_attempt()
         self.client.force_login(self.student)
 
-        response = self.post_save(attempt, self.questions[0].pk, self.correct[1].pk)
+        response = self.post_save(
+            attempt,
+            self.questions[0].pk,
+            self.correct[1].pk,
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
@@ -106,7 +126,9 @@ class StoreAnswerValidationTests(AutosaveTestBase):
     def test_question_outside_the_exam_is_rejected(self):
         attempt = self.create_attempt()
         stray = Question.objects.create(
-            course=self.course, text="Not in exam", created_by=self.instructor
+            course=self.course,
+            text="Not in exam",
+            created_by=self.instructor,
         )
         self.client.force_login(self.student)
 
@@ -119,9 +141,17 @@ class StoreAnswerValidationTests(AutosaveTestBase):
         attempt = self.create_attempt()
         self.client.force_login(self.student)
 
-        self.assertEqual(self.post_save(attempt, "abc", "").status_code, 404)
         self.assertEqual(
-            self.post_save(attempt, self.questions[0].pk, "xyz").status_code, 404
+            self.post_save(attempt, "abc", "").status_code,
+            404,
+        )
+        self.assertEqual(
+            self.post_save(
+                attempt,
+                self.questions[0].pk,
+                "xyz",
+            ).status_code,
+            404,
         )
         self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
 
@@ -132,13 +162,21 @@ class StoreAnswerValidationTests(AutosaveTestBase):
 
         self.post_save(attempt, question.pk, self.wrong[0].pk)
         self.post_save(attempt, question.pk, self.correct[0].pk)
-        answer = Answer.objects.get(attempt=attempt, question=question)
+
+        answer = Answer.objects.get(
+            attempt=attempt,
+            question=question,
+        )
         self.assertEqual(answer.selected_choice_id, self.correct[0].pk)
 
         self.post_save(attempt, question.pk, "")
         answer.refresh_from_db()
+
         self.assertIsNone(answer.selected_choice_id)
-        self.assertEqual(Answer.objects.filter(attempt=attempt).count(), 1)
+        self.assertEqual(
+            Answer.objects.filter(attempt=attempt).count(),
+            1,
+        )
 
 
 class AutosaveEndpointTests(AutosaveTestBase):
@@ -147,22 +185,34 @@ class AutosaveEndpointTests(AutosaveTestBase):
     def autosave(self, attempt, question_id, choice_id=""):
         return self.client.post(
             reverse("exams:autosave_answer", args=[attempt.pk]),
-            {"question_id": question_id, "choice_id": choice_id},
+            {
+                "question_id": question_id,
+                "choice_id": choice_id,
+            },
         )
 
     def test_autosave_stores_answer_and_acknowledges(self):
         attempt = self.create_attempt()
         self.client.force_login(self.student)
 
-        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+        response = self.autosave(
+            attempt,
+            self.questions[0].pk,
+            self.correct[0].pk,
+        )
 
         self.assertEqual(response.status_code, 200)
+
         data = response.json()
         self.assertTrue(data["saved"])
         self.assertEqual(data["question_id"], self.questions[0].pk)
         self.assertEqual(data["choice_id"], self.correct[0].pk)
         self.assertIn("saved_at", data)
-        answer = Answer.objects.get(attempt=attempt, question=self.questions[0])
+
+        answer = Answer.objects.get(
+            attempt=attempt,
+            question=self.questions[0],
+        )
         self.assertEqual(answer.selected_choice_id, self.correct[0].pk)
 
     def test_autosave_overwrites_and_clears_the_same_answer(self):
@@ -172,15 +222,23 @@ class AutosaveEndpointTests(AutosaveTestBase):
 
         self.autosave(attempt, question.pk, self.wrong[1].pk)
         self.autosave(attempt, question.pk, self.correct[1].pk)
-        answer = Answer.objects.get(attempt=attempt, question=question)
+
+        answer = Answer.objects.get(
+            attempt=attempt,
+            question=question,
+        )
         self.assertEqual(answer.selected_choice_id, self.correct[1].pk)
 
         response = self.autosave(attempt, question.pk, "")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["choice_id"])
+
         answer.refresh_from_db()
         self.assertIsNone(answer.selected_choice_id)
-        self.assertEqual(Answer.objects.filter(attempt=attempt).count(), 1)
+        self.assertEqual(
+            Answer.objects.filter(attempt=attempt).count(),
+            1,
+        )
 
     def test_invalid_question_or_choice_returns_400(self):
         attempt = self.create_attempt()
@@ -202,28 +260,43 @@ class AutosaveEndpointTests(AutosaveTestBase):
         attempt = self.create_attempt()
         self.client.force_login(self.student)
 
-        response = self.client.get(reverse("exams:autosave_answer", args=[attempt.pk]))
+        response = self.client.get(
+            reverse("exams:autosave_answer", args=[attempt.pk])
+        )
 
         self.assertEqual(response.status_code, 405)
 
     def test_submitted_attempt_cannot_autosave(self):
-        attempt = self.create_attempt(status=ExamAttempt.Status.SUBMITTED)
+        attempt = self.create_attempt(
+            status=ExamAttempt.Status.SUBMITTED
+        )
         self.client.force_login(self.student)
 
-        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+        response = self.autosave(
+            attempt,
+            self.questions[0].pk,
+            self.correct[0].pk,
+        )
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.json()["saved"])
         self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
 
     def test_expired_attempt_is_timed_out_scored_and_rejected(self):
-        attempt = self.create_attempt(deadline=timezone.now() - timedelta(seconds=1))
+        attempt = self.create_attempt(
+            deadline=timezone.now() - timedelta(seconds=1)
+        )
         self.client.force_login(self.student)
 
-        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+        response = self.autosave(
+            attempt,
+            self.questions[0].pk,
+            self.correct[0].pk,
+        )
 
         self.assertEqual(response.status_code, 409)
         self.assertFalse(response.json()["saved"])
+
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, ExamAttempt.Status.TIMED_OUT)
         self.assertTrue(hasattr(attempt, "result"))
@@ -233,7 +306,11 @@ class AutosaveEndpointTests(AutosaveTestBase):
         attempt = self.create_attempt(student=self.other_student)
         self.client.force_login(self.student)
 
-        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+        response = self.autosave(
+            attempt,
+            self.questions[0].pk,
+            self.correct[0].pk,
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
@@ -242,14 +319,22 @@ class AutosaveEndpointTests(AutosaveTestBase):
         attempt = self.create_attempt()
         self.client.force_login(self.instructor)
 
-        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+        response = self.autosave(
+            attempt,
+            self.questions[0].pk,
+            self.correct[0].pk,
+        )
 
         self.assertEqual(response.status_code, 403)
 
     def test_anonymous_user_is_redirected_to_login(self):
         attempt = self.create_attempt()
 
-        response = self.autosave(attempt, self.questions[0].pk, self.correct[0].pk)
+        response = self.autosave(
+            attempt,
+            self.questions[0].pk,
+            self.correct[0].pk,
+        )
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Answer.objects.filter(attempt=attempt).exists())
@@ -262,21 +347,50 @@ class AutosavePageTests(AutosaveTestBase):
         attempt = self.create_attempt()
         self.client.force_login(self.student)
 
-        response = self.client.get(reverse("exams:take_attempt", args=[attempt.pk]))
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
 
-        autosave_url = reverse("exams:autosave_answer", args=[attempt.pk])
-        self.assertContains(response, f'data-autosave-url="{autosave_url}"')
+        autosave_url = reverse(
+            "exams:autosave_answer",
+            args=[attempt.pk],
+        )
+        self.assertContains(
+            response,
+            f'data-autosave-url="{autosave_url}"',
+        )
         self.assertContains(response, 'id="autosave-status"')
         self.assertContains(response, 'role="status"')
-        self.assertContains(response, "autosaveAnswer(choiceId)")
+
+        # JavaScript is loaded externally, so inspect the static file.
+        self.assertContains(
+            response,
+            'src="/static/exams/js/take_attempt.js"',
+        )
+
+        js_path = (
+            Path(__file__).resolve().parents[2]
+            / "static"
+            / "exams"
+            / "js"
+            / "take_attempt.js"
+        )
+        js_content = js_path.read_text(encoding="utf-8")
+
+        self.assertIn("function autosaveAnswer(choiceId)", js_content)
 
     def test_no_js_navigation_form_is_unchanged(self):
         attempt = self.create_attempt()
         self.client.force_login(self.student)
 
-        response = self.client.get(reverse("exams:take_attempt", args=[attempt.pk]))
+        response = self.client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
 
-        save_url = reverse("exams:save_answer", args=[attempt.pk])
+        save_url = reverse(
+            "exams:save_answer",
+            args=[attempt.pk],
+        )
         self.assertContains(response, f'action="{save_url}"')
         self.assertContains(response, 'name="question_id"')
         self.assertContains(response, 'name="choice_id"')
@@ -287,21 +401,34 @@ class AutosavePageTests(AutosaveTestBase):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.student)
 
-        page = client.get(reverse("exams:take_attempt", args=[attempt.pk]))
+        page = client.get(
+            reverse("exams:take_attempt", args=[attempt.pk])
+        )
         token = re.search(
-            r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()
+            r'name="csrfmiddlewaretoken" value="([^"]+)"',
+            page.content.decode(),
         ).group(1)
+
         url = reverse("exams:autosave_answer", args=[attempt.pk])
-        data = {"question_id": self.questions[0].pk, "choice_id": self.correct[0].pk}
+        data = {
+            "question_id": self.questions[0].pk,
+            "choice_id": self.correct[0].pk,
+        }
 
         self.assertEqual(client.post(url, data).status_code, 403)
-        response = client.post(url, data, HTTP_X_CSRFTOKEN=token)
+
+        response = client.post(
+            url,
+            data,
+            HTTP_X_CSRFTOKEN=token,
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["saved"])
         self.assertTrue(
             Answer.objects.filter(
-                attempt=attempt, selected_choice=self.correct[0]
+                attempt=attempt,
+                selected_choice=self.correct[0],
             ).exists()
         )
 
@@ -311,7 +438,8 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
 
     def submit(self, attempt, data):
         return self.client.post(
-            reverse("exams:submit_attempt", args=[attempt.pk]), data
+            reverse("exams:submit_attempt", args=[attempt.pk]),
+            data,
         )
 
     def test_manual_submit_stores_and_scores_current_choice(self):
@@ -320,29 +448,48 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
 
         response = self.submit(
             attempt,
-            {"question_id": self.questions[1].pk, "choice_id": self.correct[1].pk},
+            {
+                "question_id": self.questions[1].pk,
+                "choice_id": self.correct[1].pk,
+            },
         )
 
         self.assertEqual(response.status_code, 302)
+
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, ExamAttempt.Status.SUBMITTED)
         self.assertTrue(
             Answer.objects.filter(
-                attempt=attempt, selected_choice=self.correct[1]
+                attempt=attempt,
+                selected_choice=self.correct[1],
             ).exists()
         )
-        self.assertEqual(attempt.result.score, self.questions[1].marks)
+        self.assertEqual(
+            attempt.result.score,
+            self.questions[1].marks,
+        )
 
     def test_empty_choice_on_submit_does_not_clear_saved_answer(self):
         attempt = self.create_attempt()
         Answer.objects.create(
-            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+            attempt=attempt,
+            question=self.questions[0],
+            selected_choice=self.correct[0],
         )
         self.client.force_login(self.student)
 
-        self.submit(attempt, {"question_id": self.questions[0].pk, "choice_id": ""})
+        self.submit(
+            attempt,
+            {
+                "question_id": self.questions[0].pk,
+                "choice_id": "",
+            },
+        )
 
-        answer = Answer.objects.get(attempt=attempt, question=self.questions[0])
+        answer = Answer.objects.get(
+            attempt=attempt,
+            question=self.questions[0],
+        )
         self.assertEqual(answer.selected_choice_id, self.correct[0].pk)
 
     def test_invalid_choice_on_submit_still_submits(self):
@@ -351,7 +498,10 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
 
         self.submit(
             attempt,
-            {"question_id": self.questions[0].pk, "choice_id": self.correct[1].pk},
+            {
+                "question_id": self.questions[0].pk,
+                "choice_id": self.correct[1].pk,
+            },
         )
 
         attempt.refresh_from_db()
@@ -360,12 +510,17 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
         self.assertEqual(attempt.result.score, 0)
 
     def test_submit_after_deadline_ignores_carried_choice(self):
-        attempt = self.create_attempt(deadline=timezone.now() - timedelta(seconds=1))
+        attempt = self.create_attempt(
+            deadline=timezone.now() - timedelta(seconds=1)
+        )
         self.client.force_login(self.student)
 
         self.submit(
             attempt,
-            {"question_id": self.questions[0].pk, "choice_id": self.correct[0].pk},
+            {
+                "question_id": self.questions[0].pk,
+                "choice_id": self.correct[0].pk,
+            },
         )
 
         attempt.refresh_from_db()
@@ -376,7 +531,9 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
     def test_submit_form_carries_current_question_and_saved_choice(self):
         attempt = self.create_attempt()
         Answer.objects.create(
-            attempt=attempt, question=self.questions[0], selected_choice=self.wrong[0]
+            attempt=attempt,
+            question=self.questions[0],
+            selected_choice=self.wrong[0],
         )
         self.client.force_login(self.student)
 
@@ -386,7 +543,11 @@ class SubmitCarriesCurrentAnswerTests(AutosaveTestBase):
 
         content = response.content.decode()
         submit_form = content[content.index('id="submit-form"'):]
-        self.assertIn(f'name="question_id" value="{self.questions[0].pk}"', submit_form)
+
+        self.assertIn(
+            f'name="question_id" value="{self.questions[0].pk}"',
+            submit_form,
+        )
         self.assertRegex(
             submit_form,
             rf'id="submit-choice-id"\s+value="{self.wrong[0].pk}"',
@@ -405,7 +566,9 @@ class ResumeAttemptTests(AutosaveTestBase):
     def test_reopening_resumes_at_first_unanswered_question(self):
         attempt = self.create_attempt()
         Answer.objects.create(
-            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+            attempt=attempt,
+            question=self.questions[0],
+            selected_choice=self.correct[0],
         )
 
         response = self.open_attempt(attempt)
@@ -415,7 +578,10 @@ class ResumeAttemptTests(AutosaveTestBase):
 
     def test_answer_row_without_choice_counts_as_unanswered(self):
         attempt = self.create_attempt()
-        Answer.objects.create(attempt=attempt, question=self.questions[0])
+        Answer.objects.create(
+            attempt=attempt,
+            question=self.questions[0],
+        )
 
         response = self.open_attempt(attempt)
 
@@ -424,8 +590,13 @@ class ResumeAttemptTests(AutosaveTestBase):
 
     def test_fully_answered_attempt_opens_at_first_question(self):
         attempt = self.create_attempt()
+
         for question, choice in zip(self.questions, self.correct):
-            Answer.objects.create(attempt=attempt, question=question, selected_choice=choice)
+            Answer.objects.create(
+                attempt=attempt,
+                question=question,
+                selected_choice=choice,
+            )
 
         response = self.open_attempt(attempt)
 
@@ -434,7 +605,9 @@ class ResumeAttemptTests(AutosaveTestBase):
     def test_explicit_question_parameter_is_respected(self):
         attempt = self.create_attempt()
         Answer.objects.create(
-            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+            attempt=attempt,
+            question=self.questions[0],
+            selected_choice=self.correct[0],
         )
 
         response = self.open_attempt(attempt, "?q=0")
@@ -444,12 +617,15 @@ class ResumeAttemptTests(AutosaveTestBase):
     def test_start_attempt_resumes_existing_attempt_at_unanswered_question(self):
         attempt = self.create_attempt()
         Answer.objects.create(
-            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+            attempt=attempt,
+            question=self.questions[0],
+            selected_choice=self.correct[0],
         )
         self.client.force_login(self.student)
 
         response = self.client.get(
-            reverse("exams:start_attempt", args=[self.exam.pk]), follow=True
+            reverse("exams:start_attempt", args=[self.exam.pk]),
+            follow=True,
         )
 
         self.assertEqual(response.context["attempt"].pk, attempt.pk)
@@ -458,14 +634,22 @@ class ResumeAttemptTests(AutosaveTestBase):
     def test_answered_questions_are_marked_in_navigation(self):
         attempt = self.create_attempt()
         Answer.objects.create(
-            attempt=attempt, question=self.questions[0], selected_choice=self.correct[0]
+            attempt=attempt,
+            question=self.questions[0],
+            selected_choice=self.correct[0],
         )
 
         response = self.open_attempt(attempt)
 
         self.assertEqual(response.context["answered_count"], 1)
-        self.assertContains(response, 'aria-label="Go to question 1 (answered)"')
-        self.assertContains(response, 'aria-label="Go to question 2"')
+        self.assertContains(
+            response,
+            'aria-label="Go to question 1 (answered)"',
+        )
+        self.assertContains(
+            response,
+            'aria-label="Go to question 2"',
+        )
         self.assertContains(response, 'class=" answered"')
         self.assertRegex(
             response.content.decode(),
