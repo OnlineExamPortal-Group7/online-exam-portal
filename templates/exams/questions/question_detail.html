@@ -1,25 +1,91 @@
 {% extends "base.html" %}
-{% block title %}Question {{ question.pk }}{% endblock %}
+
+{% block title %}Question #{{ question.pk }} - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Question Bank{% endblock %}
+{% block breadcrumb_current %}Question #{{ question.pk }}{% endblock %}
+
 {% block content %}
-<h2>Question {{ question.pk }}</h2>
-{% include "exams/questions/_messages.html" %}
-<p>{{ question.text|linebreaksbr }}</p>
-<dl>
-  <dt>Course</dt><dd>{{ question.course }}</dd>
-  <dt>Difficulty</dt><dd>{{ question.get_difficulty_display }}</dd>
-  <dt>Marks</dt><dd>{{ question.marks }}</dd>
-  <dt>Created by</dt><dd>{{ question.created_by.username }}</dd>
-  <dt>Used in exams</dt><dd>{{ usage.exams }}</dd>
-</dl>
-<h3>Answer choices</h3>
-<ol>
-  {% for choice in question.choices.all %}
-    <li>{{ choice.text }}{% if choice.is_correct %} <strong>(correct)</strong>{% endif %}</li>
-  {% endfor %}
-</ol>
-<p>
-  <a href="{% url 'exams:question_update' question.pk %}">Edit</a>
-  <a href="{% url 'exams:question_delete' question.pk %}">Delete</a>
-  <a href="{% url 'exams:question_list' %}">Back to question bank</a>
-</p>
+<div class="max-w-3xl mx-auto space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+        {{ question.course.code }}
+      </span>
+      <span class="text-xs font-semibold text-slate-500">Question #{{ question.pk }}</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'exams:question_update' question.pk %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+        <span>Edit</span>
+      </a>
+      <a href="{% url 'exams:question_delete' question.pk %}" class="btn btn-secondary btn-sm text-rose-600 hover:text-rose-700">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        <span>Delete</span>
+      </a>
+      <a href="{% url 'exams:question_list' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>Back</span>
+      </a>
+    </div>
+  </div>
+
+  {% include "exams/questions/_messages.html" %}
+
+  <!-- Question Content Card -->
+  <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+
+    <div>
+      <span class="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-2">Question Prompt</span>
+      <p class="text-base sm:text-lg font-semibold text-slate-900 leading-relaxed">
+        {{ question.text|linebreaksbr }}
+      </p>
+    </div>
+
+    <!-- Metadata Grid -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+      <div>
+        <span class="text-slate-400 block text-[10px] uppercase font-semibold">Course</span>
+        <span class="font-bold text-slate-800">{{ question.course }}</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block text-[10px] uppercase font-semibold">Difficulty</span>
+        <span class="font-bold text-slate-800">{{ question.get_difficulty_display }}</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block text-[10px] uppercase font-semibold">Marks</span>
+        <span class="font-bold text-slate-800">{{ question.marks }} pts</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block text-[10px] uppercase font-semibold">Used in Exams</span>
+        <span class="font-bold text-slate-800">{{ usage.exams }} exam(s)</span>
+      </div>
+    </div>
+
+    <!-- Choices List -->
+    <div>
+      <h2 class="text-sm font-bold text-slate-900 mb-3">Answer Choices</h2>
+      <div class="space-y-2.5">
+        {% for choice in question.choices.all %}
+          <div class="p-3.5 rounded-xl border flex items-center justify-between text-sm {% if choice.is_correct %}bg-emerald-50/70 border-emerald-300 text-emerald-950 font-medium{% else %}bg-white border-slate-200 text-slate-700{% endif %}">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold {% if choice.is_correct %}bg-emerald-200 text-emerald-800{% else %}bg-slate-100 text-slate-500{% endif %}">
+                {{ forloop.counter }}
+              </span>
+              <span>{{ choice.text }}</span>
+            </div>
+            {% if choice.is_correct %}
+              <span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                <i data-lucide="check-circle" class="w-4 h-4"></i> (correct)
+              </span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
 {% endblock %}

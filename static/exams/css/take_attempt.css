@@ -1,111 +1,164 @@
+/* ==========================================================================
+   Distraction-Free Student Examination Interface Stylesheet
+   Preserves all JS hooks for take_attempt.js while elevating UI/UX
+   ========================================================================== */
 
 .exam-layout {
-  max-width: 950px;
-  margin: 0 auto;
+  width: 100%;
 }
 
-.exam-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
+/* Timer Display */
 .exam-timer {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: #fff3cd;
-  color: #664d03;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #EEF2FF;
+  color: #3730A3;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
   font-weight: 700;
+  font-size: 0.875rem;
+  border: 1px solid #C7D2FE;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
 }
 
 .exam-timer.expired {
-  background: #f8d7da;
-  color: #842029;
+  background: #FEE2E2 !important;
+  color: #991B1B !important;
+  border-color: #F87171 !important;
+  animation: pulse 1.5s infinite;
 }
 
+/* Question Panel */
 .question-panel {
-  border: 1px solid #d8dee8;
-  border-radius: 10px;
-  padding: 1.25rem;
-  margin: 1rem 0;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  padding: 1.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
 }
 
-.question-nav {
+/* Multiple-choice option cards */
+.choice-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem 1.25rem;
+  margin: 0.625rem 0;
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  font-size: 0.9375rem;
+  color: #1E293B;
+  user-select: none;
 }
 
-.question-nav button {
-  min-width: 40px;
-  padding: 0.5rem;
-  border: 1px solid #777;
-  border-radius: 6px;
-  background: #fff;
+.choice-row:hover {
+  background: #F8FAFC;
+  border-color: #CBD5E1;
+}
+
+.choice-row:has(input[type="radio"]:checked) {
+  background: #EEF2FF;
+  border-color: #4F46E5;
+  color: #1E1B4B;
+  font-weight: 500;
+  box-shadow: 0 0 0 1px #4F46E5;
+}
+
+.choice-row input[type="radio"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: #4F46E5;
   cursor: pointer;
 }
 
+/* Question Navigation Grid */
+.question-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.question-nav button {
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.question-nav button:hover {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+}
+
 .question-nav button.answered {
-  background: #d1e7dd;
-  border-color: #146c43;
+  background: #DCFCE7 !important;
+  border-color: #86EFAC !important;
+  color: #166534 !important;
 }
 
 .question-nav button.active {
-  background: #1d4ed8;
-  color: #fff;
-  border-color: #1d4ed8;
+  background: #4F46E5 !important;
+  border-color: #4338CA !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3) !important;
 }
 
-.choice-row {
-  display: block;
-  padding: 0.65rem;
-  margin: 0.4rem 0;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+.question-nav button.active.answered {
+  box-shadow: 0 0 0 2px #16A34A, 0 2px 4px rgba(79, 70, 229, 0.3) !important;
 }
 
-.exam-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+/* Autosave Feedback Pill */
 .autosave-status {
   min-height: 1.5rem;
-  margin: 0.5rem 0;
-  font-size: 0.9rem;
-  color: #555;
+  margin: 0.75rem 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
 }
 
 .autosave-status.saved {
-  color: #146c43;
+  color: #16A34A;
 }
 
 .autosave-status.error {
-  color: #842029;
+  color: #DC2626;
 }
 
+/* Timeout Notice */
 #timeout-message {
   display: none;
   margin: 1rem 0;
-  padding: 1rem;
-  background: #f8d7da;
-  color: #842029;
-  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  background: #FEF2F2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
 }
 
 #timeout-message.visible {
   display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

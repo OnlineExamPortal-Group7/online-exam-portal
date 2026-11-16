@@ -1,49 +1,155 @@
 {% extends "base.html" %}
-{% block title %}Monitor exams{% endblock %}
+
+{% block title %}Live Exam Monitor - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Examinations{% endblock %}
+{% block breadcrumb_current %}Live Monitor{% endblock %}
+
 {% block content %}
-<h2>Monitor exams</h2>
+<div class="space-y-8">
 
-<h3>Live now</h3>
-{% if live_exams %}
-<ul>
-  {% for exam in live_exams %}
-  <li>
-    <a href="{% url 'exams:monitor_detail' exam.pk %}">{{ exam.title }}</a>
-    ({{ exam.course.code }}), ends {{ exam.end_time }}
-  </li>
-  {% endfor %}
-</ul>
-{% else %}
-<p>No exams are running right now.</p>
-{% endif %}
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold mb-2">
+        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+        <span>Real-Time Proctoring Console</span>
+      </div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Live Examination Monitoring</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Monitor active student sessions, heartbeat autosaves, and submission progress across all scheduled evaluations.
+      </p>
+    </div>
+    <a href="{% url 'accounts:dashboard' %}" class="btn btn-secondary btn-sm">
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Dashboard</span>
+    </a>
+  </div>
 
-<h3>Upcoming</h3>
-{% if upcoming_exams %}
-<ul>
-  {% for exam in upcoming_exams %}
-  <li>
-    <a href="{% url 'exams:monitor_detail' exam.pk %}">{{ exam.title }}</a>
-    ({{ exam.course.code }}), starts {{ exam.start_time }}
-  </li>
-  {% endfor %}
-</ul>
-{% else %}
-<p>No upcoming exams.</p>
-{% endif %}
+  <!-- Live Now Section -->
+  <div class="space-y-4">
+    <div class="flex items-center gap-2 text-sm font-bold text-slate-900">
+      <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+      <h2>Examinations In Progress Now</h2>
+      <span class="text-xs text-slate-400 font-normal">({{ live_exams|length }})</span>
+    </div>
 
-<h3>Recently ended</h3>
-{% if ended_exams %}
-<ul>
-  {% for exam in ended_exams %}
-  <li>
-    <a href="{% url 'exams:monitor_detail' exam.pk %}">{{ exam.title }}</a>
-    ({{ exam.course.code }}), ended {{ exam.end_time }}
-  </li>
-  {% endfor %}
-</ul>
-{% else %}
-<p>No ended exams.</p>
-{% endif %}
+    {% if live_exams %}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for exam in live_exams %}
+          <div class="bg-white rounded-2xl border-2 border-rose-200 p-6 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="px-2.5 py-0.5 rounded-md text-xs font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {{ exam.course.code }}
+                </span>
+                <span class="badge badge-error inline-flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping"></span> Live Now
+                </span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 mb-1">{{ exam.title }}</h3>
+              <p class="text-xs text-slate-500 mb-4">{{ exam.course.name }}</p>
 
-<p><a href="{% url 'accounts:dashboard' %}">Back to dashboard</a></p>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 mb-4">
+                <span class="block text-slate-400 text-[10px] uppercase font-semibold">Scheduled Window</span>
+                <span class="font-medium text-slate-800">Ends at {{ exam.end_time|date:"H:i, d M" }}</span>
+              </div>
+            </div>
+
+            <a href="{% url 'exams:monitor_detail' exam.pk %}" class="btn btn-primary w-full text-xs font-semibold shadow-xs">
+              <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+              <span>Open Proctor Monitor &rarr;</span>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="p-8 rounded-2xl bg-white border border-slate-200 text-center">
+        <p class="text-xs text-slate-500">No examinations are actively running right now.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Upcoming Section -->
+  <div class="space-y-4">
+    <div class="flex items-center gap-2 text-sm font-bold text-slate-900">
+      <i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i>
+      <h2>Upcoming Scheduled Examinations</h2>
+      <span class="text-xs text-slate-400 font-normal">({{ upcoming_exams|length }})</span>
+    </div>
+
+    {% if upcoming_exams %}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for exam in upcoming_exams %}
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="px-2.5 py-0.5 rounded-md text-xs font-bold font-mono bg-slate-100 text-slate-700 border border-slate-200">
+                  {{ exam.course.code }}
+                </span>
+                <span class="badge badge-neutral">Upcoming</span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 mb-1">{{ exam.title }}</h3>
+              <p class="text-xs text-slate-500 mb-4">{{ exam.course.name }}</p>
+
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 mb-4">
+                <span class="block text-slate-400 text-[10px] uppercase font-semibold">Starts At</span>
+                <span class="font-medium text-slate-800">{{ exam.start_time|date:"d M Y, H:i" }}</span>
+              </div>
+            </div>
+
+            <a href="{% url 'exams:monitor_detail' exam.pk %}" class="btn btn-secondary w-full text-xs font-semibold">
+              <span>View Standby Console</span>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="p-6 rounded-2xl bg-white border border-slate-200 text-center">
+        <p class="text-xs text-slate-500">No upcoming examinations scheduled.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Recently Ended Section -->
+  <div class="space-y-4">
+    <div class="flex items-center gap-2 text-sm font-bold text-slate-900">
+      <i data-lucide="check-circle" class="w-4 h-4 text-slate-400"></i>
+      <h2>Recently Ended Examinations</h2>
+      <span class="text-xs text-slate-400 font-normal">({{ ended_exams|length }})</span>
+    </div>
+
+    {% if ended_exams %}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for exam in ended_exams %}
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="px-2.5 py-0.5 rounded-md text-xs font-bold font-mono bg-slate-100 text-slate-700 border border-slate-200">
+                  {{ exam.course.code }}
+                </span>
+                <span class="badge badge-neutral">Ended</span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 mb-1">{{ exam.title }}</h3>
+              <p class="text-xs text-slate-500 mb-4">{{ exam.course.name }}</p>
+
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 mb-4">
+                <span class="block text-slate-400 text-[10px] uppercase font-semibold">Ended At</span>
+                <span class="font-medium text-slate-800">{{ exam.end_time|date:"d M Y, H:i" }}</span>
+              </div>
+            </div>
+
+            <a href="{% url 'exams:monitor_detail' exam.pk %}" class="btn btn-secondary w-full text-xs font-semibold">
+              <span>View Examination Logs</span>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="p-6 rounded-2xl bg-white border border-slate-200 text-center">
+        <p class="text-xs text-slate-500">No recently ended examinations.</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
 {% endblock %}

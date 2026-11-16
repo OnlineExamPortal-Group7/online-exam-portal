@@ -1,213 +1,290 @@
-
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}{{ attempt.exam.title }} | Exam{% endblock %}
+{% block title %}{{ attempt.exam.title }} | Examination Console{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'exams/css/take_attempt.css' %}">
 {% endblock %}
 
-{% block content %}
+{% block root_layout %}
+<div class="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900 select-none">
 
-<div class="exam-layout"
-     id="exam-layout"
-     data-remaining-seconds="{{ remaining_seconds|default:0 }}"
-     data-question-count="{{ question_count|default:0 }}">
+  <!-- Dedicated Top Examination Console Bar -->
+  <header class="bg-white border-b border-slate-200 px-4 sm:px-8 py-3.5 sticky top-0 z-40 shadow-xs flex items-center justify-between">
 
-  <div class="exam-top">
-    <div>
-      <h1>{{ attempt.exam.title }}</h1>
-
-      {% if attempt.exam.description %}
-        <p>{{ attempt.exam.description }}</p>
-      {% endif %}
+    <!-- Exam Title & Course Info -->
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+        <i data-lucide="file-text" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+            {{ attempt.exam.course.code }}
+          </span>
+          <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+            {{ attempt.exam.title }}
+          </h1>
+        </div>
+        <p class="text-xs text-slate-500">Candidate: <span class="font-semibold text-slate-700">{{ user.get_full_name|default:user.username }}</span> ({{ user.username }})</p>
+      </div>
     </div>
 
-    <div class="exam-timer" id="timer-container"
-         role="timer" aria-live="polite">
-      Time remaining:
-      <span id="countdown">{{ remaining_seconds }}</span>
+    <!-- Countdown Timer Container -->
+    <div class="flex items-center gap-4">
+      <div class="exam-timer" id="timer-container" role="timer" aria-live="polite">
+        <i data-lucide="clock" class="w-4 h-4 text-indigo-600"></i>
+        <span>Time remaining:</span>
+        <span id="countdown" class="font-mono text-base font-extrabold tracking-tight">{{ remaining_seconds }}</span>
+      </div>
     </div>
-  </div>
 
-  <div id="timeout-message" role="alert">
-    Your exam time has expired. Your attempt is being submitted automatically.
-    Please wait...
-  </div>
+  </header>
 
-  {% if current_question %}
+  <!-- Main Examination Environment -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
 
-    <p>
-      Question {{ question_index|add:1 }} of {{ question_count }}
-    </p>
+    <div class="exam-layout"
+         id="exam-layout"
+         data-remaining-seconds="{{ remaining_seconds|default:0 }}"
+         data-question-count="{{ question_count|default:0 }}">
 
-    <p id="answered-summary">
-      <span id="answered-count">{{ answered_count }}</span>
-      of {{ question_count }} answered
-    </p>
-
-    <nav class="question-nav" aria-label="Question navigation">
-
-      {% for question in questions %}
-
-        <button
-          type="button"
-          class="{% if forloop.counter0 == question_index %}active{% endif %}{% if question.selected_choice_id is not None %} answered{% endif %}"
-          aria-label="Go to question {{ forloop.counter }}{% if question.selected_choice_id is not None %} (answered){% endif %}"
-          aria-current="{% if forloop.counter0 == question_index %}step{% endif %}"
-          data-navigate-question="{{ forloop.counter0 }}">
-
-          {{ forloop.counter }}
-
-        </button>
-
-      {% endfor %}
-
-    </nav>
-
-    <form
-      id="answer-form"
-      method="post"
-      action="{% url 'exams:save_answer' attempt.pk %}"
-      data-autosave-url="{% url 'exams:autosave_answer' attempt.pk %}"
-      data-autosave-seq="{{ current_question.autosave_seq }}">
-
-      {% csrf_token %}
-
-      <input
-        type="hidden"
-        name="autosave_seq"
-        class="autosave-seq"
-        value="{{ current_question.autosave_seq }}">
-
-      <input
-        type="hidden"
-        name="question_id"
-        value="{{ current_question.pk }}">
-
-      <input
-        type="hidden"
-        name="choice_id"
-        id="choice-id"
-        value="{{ current_question.selected_choice_id|default_if_none:'' }}">
-
-      <input
-        type="hidden"
-        name="next_question"
-        id="next-question"
-        value="{{ question_index }}">
-
-      <section class="question-panel">
-
-        <h2>{{ current_question.text }}</h2>
-
-        {% for choice in current_question.choices.all %}
-
-          <label class="choice-row">
-
-            <input
-              type="radio"
-              name="visible_choice"
-              value="{{ choice.pk }}"
-              {% if current_question.selected_choice_id == choice.pk %}
-                checked
-              {% endif %}>
-
-            {{ choice.text }}
-
-          </label>
-
-        {% empty %}
-
-          <p>No answer choices are available for this question.</p>
-
-        {% endfor %}
-
-      </section>
-
-      <p id="autosave-status" class="autosave-status"
-         role="status" aria-live="polite"></p>
-
-      <div class="exam-actions">
-
-        <button
-          type="button"
-          id="previous-button"
-          data-navigate-question="{{ question_index|add:'-1' }}"
-          {% if question_index == 0 %}disabled{% endif %}>
-
-          Previous
-
-        </button>
-
-        {% if question_index < question_count|add:'-1' %}
-
-          <button
-            type="button"
-            id="next-button"
-            data-navigate-question="{{ question_index|add:'1' }}">
-
-            Save &amp; Next
-
-          </button>
-
-        {% else %}
-
-          <button
-            type="button"
-            id="save-button"
-            data-navigate-question="{{ question_index }}">
-
-            Save Answer
-
-          </button>
-
-        {% endif %}
-
+      <!-- Timeout Warning Message Banner -->
+      <div id="timeout-message" role="alert" class="flex items-center gap-3">
+        <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600 shrink-0"></i>
+        <span>Your exam time has expired. Submitting your attempt now...</span>
       </div>
 
-    </form>
+      {% if current_question %}
 
-  {% else %}
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-    <p>This exam does not have any questions yet.</p>
+          <!-- LEFT / CENTER: Active Question & Choices (8 cols) -->
+          <div class="lg:col-span-8 space-y-6">
 
-  {% endif %}
+            <!-- Question Number & Progress Pill -->
+            <div class="flex items-center justify-between bg-white px-5 py-3 rounded-xl border border-slate-200 shadow-xs">
+              <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                Question {{ question_index|add:1 }} of {{ question_count }}
+              </span>
+              <div class="text-xs text-slate-500 font-medium" id="answered-summary">
+                <span id="answered-count">{{ answered_count }}</span>
+                of {{ question_count }} answered
+              </div>
+            </div>
 
-  <form
-    method="post"
-    action="{% url 'exams:submit_attempt' attempt.pk %}"
-    id="submit-form">
+            <!-- Answer Submission Form -->
+            <form
+              id="answer-form"
+              method="post"
+              action="{% url 'exams:save_answer' attempt.pk %}"
+              data-autosave-url="{% url 'exams:autosave_answer' attempt.pk %}"
+              data-autosave-seq="{{ current_question.autosave_seq }}"
+              class="space-y-6">
 
-    {% csrf_token %}
+              {% csrf_token %}
 
-    {% if current_question %}
-      <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+              <input
+                type="hidden"
+                name="autosave_seq"
+                class="autosave-seq"
+                value="{{ current_question.autosave_seq }}">
 
-      <input
-        type="hidden"
-        name="choice_id"
-        id="submit-choice-id"
-        value="{{ current_question.selected_choice_id|default_if_none:'' }}">
+              <input
+                type="hidden"
+                name="question_id"
+                value="{{ current_question.pk }}">
 
-      <input
-        type="hidden"
-        name="autosave_seq"
-        class="autosave-seq"
-        value="{{ current_question.autosave_seq }}">
-    {% endif %}
+              <input
+                type="hidden"
+                name="choice_id"
+                id="choice-id"
+                value="{{ current_question.selected_choice_id|default_if_none:'' }}">
 
-    <button type="submit" id="submit-button">
-      Submit exam
-    </button>
+              <input
+                type="hidden"
+                name="next_question"
+                id="next-question"
+                value="{{ question_index }}">
 
-  </form>
+              <!-- Question Box -->
+              <section class="question-panel space-y-4">
+
+                <h2 class="text-lg sm:text-xl font-semibold text-slate-900 leading-relaxed">
+                  {{ current_question.text }}
+                </h2>
+
+                <div class="pt-2 space-y-2">
+                  {% for choice in current_question.choices.all %}
+                    <label class="choice-row">
+                      <input
+                        type="radio"
+                        name="visible_choice"
+                        value="{{ choice.pk }}"
+                        {% if current_question.selected_choice_id == choice.pk %}
+                          checked
+                        {% endif %}>
+                      <span class="flex-1">{{ choice.text }}</span>
+                    </label>
+                  {% empty %}
+                    <p class="text-sm text-slate-500 italic p-4 bg-slate-50 rounded-lg">No answer choices are currently configured for this question.</p>
+                  {% endfor %}
+                </div>
+
+              </section>
+
+              <!-- Autosave Notification Status -->
+              <div class="flex items-center justify-between">
+                <p id="autosave-status" class="autosave-status" role="status" aria-live="polite"></p>
+                <span class="text-[11px] text-slate-400">Selecting an option automatically saves your progress</span>
+              </div>
+
+              <!-- Navigation Controls -->
+              <div class="exam-actions bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between gap-4">
+
+                <button
+                  type="button"
+                  id="previous-button"
+                  data-navigate-question="{{ question_index|add:'-1' }}"
+                  {% if question_index == 0 %}disabled{% endif %}
+                  class="btn btn-secondary text-xs font-semibold px-4 py-2">
+                  <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                  <span>Previous</span>
+                </button>
+
+                {% if question_index < question_count|add:'-1' %}
+                  <button
+                    type="button"
+                    id="next-button"
+                    data-navigate-question="{{ question_index|add:'1' }}"
+                    class="btn btn-primary text-xs font-semibold px-5 py-2 shadow-xs">
+                    <span>Save &amp; Next</span>
+                    <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                  </button>
+                {% else %}
+                  <button
+                    type="button"
+                    id="save-button"
+                    data-navigate-question="{{ question_index }}"
+                    class="btn btn-primary text-xs font-semibold px-5 py-2 shadow-xs">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                    <span>Save Answer</span>
+                  </button>
+                {% endif %}
+
+              </div>
+
+            </form>
+
+          </div>
+
+          <!-- RIGHT SIDEBAR: Question Palette & Submission (4 cols) -->
+          <div class="lg:col-span-4 space-y-6">
+
+            <!-- Question Palette Card -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 class="text-sm font-bold text-slate-900">Question Palette</h3>
+                <span class="text-xs text-slate-500 font-mono">{{ question_count }} total</span>
+              </div>
+
+              <!-- Question Grid -->
+              <nav class="question-nav" aria-label="Question navigation">
+                {% for question in questions %}
+                  <button
+                    type="button"
+                    class="{% if forloop.counter0 == question_index %}active{% endif %}{% if question.selected_choice_id is not None %} answered{% endif %}"
+                    aria-label="Go to question {{ forloop.counter }}{% if question.selected_choice_id is not None %} (answered){% endif %}"
+                    aria-current="{% if forloop.counter0 == question_index %}step{% endif %}"
+                    data-navigate-question="{{ forloop.counter0 }}">
+                    {{ forloop.counter }}
+                  </button>
+                {% endfor %}
+              </nav>
+
+              <!-- Color Legend -->
+              <div class="pt-4 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded bg-indigo-600 border border-indigo-700"></span>
+                  <span>Current item</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded bg-emerald-100 border border-emerald-400"></span>
+                  <span>Answered</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded bg-white border border-slate-300"></span>
+                  <span>Unanswered</span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Manual Submission Card -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <h3 class="text-sm font-bold text-slate-900">Finish Attempt</h3>
+              <p class="text-xs text-slate-500 leading-relaxed">
+                Once submitted, your answers will be finalized and evaluated. You will not be able to modify your choices.
+              </p>
+
+              <form
+                method="post"
+                action="{% url 'exams:submit_attempt' attempt.pk %}"
+                id="submit-form"
+                class="pt-2">
+
+                {% csrf_token %}
+
+                {% if current_question %}
+                  <input type="hidden" name="question_id" value="{{ current_question.pk }}">
+
+                  <input
+                    type="hidden"
+                    name="choice_id"
+                    id="submit-choice-id"
+                    value="{{ current_question.selected_choice_id|default_if_none:'' }}">
+
+                  <input
+                    type="hidden"
+                    name="autosave_seq"
+                    class="autosave-seq"
+                    value="{{ current_question.autosave_seq }}">
+                {% endif %}
+
+                <button
+                  type="submit"
+                  id="submit-button"
+                  class="w-full btn btn-danger py-2.5 text-xs font-semibold shadow-xs">
+                  <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                  <span>Submit Final Examination</span>
+                </button>
+
+              </form>
+            </div>
+
+          </div>
+
+        </div>
+
+      {% else %}
+
+        <div class="p-12 bg-white rounded-2xl border border-slate-200 text-center max-w-md mx-auto">
+          <p class="text-slate-600 text-sm">This examination does not have any questions configured.</p>
+        </div>
+
+      {% endif %}
+
+    </div>
+
+  </main>
+
+  <footer class="py-3 px-6 border-t border-slate-200 text-center text-[11px] text-slate-400 bg-white">
+    Online Exam Portal &bull; Secure Proctoring Session #{{ attempt.pk }}
+  </footer>
 
 </div>
 
-{% endblock %}
-
-{% block extra_js %}
 <script src="{% static 'exams/js/take_attempt.js' %}" defer></script>
-{% endblock %}
+{% endblock root_layout %}

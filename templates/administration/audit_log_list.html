@@ -1,52 +1,100 @@
 {% extends "base.html" %}
 
-{% block title %}Audit History{% endblock %}
+{% block title %}Audit History - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Administration{% endblock %}
+{% block breadcrumb_current %}Audit Logs{% endblock %}
 
 {% block content %}
-<h2>Audit History</h2>
-<p>Records of administrative activities in the Online Examination Portal.</p>
-<p><a href="{% url 'administration:user_list' %}">Back to user management</a></p>
+<div class="space-y-6">
 
-{% if audit_logs %}
-<table>
-  <thead>
-    <tr>
-      <th>Date and time</th>
-      <th>Performed by</th>
-      <th>Action</th>
-      <th>Target type</th>
-      <th>Target ID</th>
-      <th>Target name</th>
-      <th>Additional details</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for log in audit_logs %}
-    <tr>
-      <td>{{ log.timestamp|date:"d M Y, H:i:s" }}</td>
-      <td>{{ log.actor_name }}</td>
-      <td>{{ log.action }}</td>
-      <td>{{ log.target_type }}</td>
-      <td>{{ log.target_id }}</td>
-      <td>{{ log.target_name }}</td>
-      <td>{{ log.details }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Audit History</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Immutable records of administrative activities, access changes, and security events.
+      </p>
+    </div>
+    <a href="{% url 'administration:user_list' %}" class="btn btn-secondary btn-sm">
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Back to Users</span>
+    </a>
+  </div>
 
-{% if is_paginated %}
-<nav aria-label="Audit history pages">
-  {% if page_obj.has_previous %}
-    <a href="?page={{ page_obj.previous_page_number }}">Previous</a>
+  {% if audit_logs %}
+    <div class="table-container shadow-xs">
+      <table>
+        <thead>
+          <tr>
+            <th>Date &amp; Time</th>
+            <th>Performed By</th>
+            <th>Action</th>
+            <th>Target Type</th>
+            <th>Target Identifier</th>
+            <th>Target Name</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in audit_logs %}
+            <tr>
+              <td class="text-xs font-mono text-slate-500 whitespace-nowrap">
+                {{ log.timestamp|date:"d M Y, H:i:s" }}
+              </td>
+              <td class="font-semibold text-slate-900 text-xs">
+                {{ log.actor_name }}
+              </td>
+              <td>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 font-mono">
+                  {{ log.action }}
+                </span>
+              </td>
+              <td class="text-xs text-slate-600">
+                {{ log.target_type }}
+              </td>
+              <td class="text-xs font-mono text-slate-500">
+                #{{ log.target_id }}
+              </td>
+              <td class="text-xs font-medium text-slate-800">
+                {{ log.target_name }}
+              </td>
+              <td class="text-xs text-slate-500 max-w-xs truncate" title="{{ log.details }}">
+                {{ log.details }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+      <nav class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-600" aria-label="Audit history pagination">
+        <div>
+          <span>Page <strong class="text-slate-900">{{ page_obj.number }}</strong> of <strong class="text-slate-900">{{ page_obj.paginator.num_pages }}</strong></span>
+        </div>
+        <div class="flex items-center gap-2">
+          {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}" class="btn btn-secondary btn-sm py-1 px-3">
+              &larr; Previous
+            </a>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}" class="btn btn-secondary btn-sm py-1 px-3">
+              Next &rarr;
+            </a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="p-12 bg-white rounded-2xl border border-slate-200 text-center">
+      <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+        <i data-lucide="shield" class="w-6 h-6"></i>
+      </div>
+      <h2 class="text-base font-bold text-slate-900">No audit records found</h2>
+      <p class="text-xs text-slate-500 mt-1">Platform actions will automatically appear here once administrative tasks take place.</p>
+    </div>
   {% endif %}
-  <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-  {% if page_obj.has_next %}
-    <a href="?page={{ page_obj.next_page_number }}">Next</a>
-  {% endif %}
-</nav>
-{% endif %}
-{% else %}
-<p>No audit records are available yet.</p>
-{% endif %}
+
+</div>
 {% endblock %}

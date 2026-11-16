@@ -1,109 +1,139 @@
 {% extends "base.html" %}
 
-{% block title %}{{ exam.title }} - Class Analytics{% endblock %}
+{% block title %}Analytics: {{ exam.title }} - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Results{% endblock %}
+{% block breadcrumb_current %}Class Analytics{% endblock %}
 
 {% block content %}
+<div class="space-y-8">
 
-<h2>Class Performance Analytics</h2>
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <span class="px-2.5 py-0.5 rounded-md text-xs font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">
+          {{ exam.course.code }}
+        </span>
+        <span class="text-xs text-slate-400 font-semibold">{{ exam.course.name }}</span>
+      </div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Class Performance Analytics</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Statistical score distribution and per-question item analysis for {{ exam.title }}.
+      </p>
+    </div>
 
-<h3>{{ exam.title }}</h3>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'results:exam_review' exam.pk %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+        <span>Review Roster</span>
+      </a>
+      <a href="{% url 'results:exam_list' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>Exam List</span>
+      </a>
+    </div>
+  </div>
 
-<p>
-    <strong>Course:</strong>
-    {{ exam.course.code }} - {{ exam.course.name }}
-    <br>
-    <strong>Total marks:</strong> {{ exam.total_marks }}
-</p>
+  <!-- KPI Overview Grid -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Scored Candidates</span>
+      <span class="text-2xl font-extrabold text-slate-900 block mt-1">{{ scored_count }}</span>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Class Average</span>
+      <span class="text-2xl font-extrabold text-indigo-600 block mt-1">{{ average_percentage }}%</span>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Total Scored</span>
+      <span class="text-2xl font-extrabold text-slate-900 block mt-1">{{ total_published_score }}</span>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Total Marks Possible</span>
+      <span class="text-2xl font-extrabold text-slate-900 block mt-1">{{ total_published_marks }}</span>
+    </div>
+  </div>
 
-<h3>Class Overview</h3>
+  <!-- Score Distribution Section -->
+  <div class="space-y-3">
+    <h2 class="text-sm font-bold text-slate-900">Score Distribution</h2>
 
-<table>
-    <thead>
-        <tr>
-            <th>Metric</th>
-            <th>Value</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>Students with published scores</td>
-            <td>{{ scored_count }}</td>
-        </tr>
-        <tr>
-            <td>Average class percentage</td>
-            <td>{{ average_percentage }}%</td>
-        </tr>
-        <tr>
-            <td>Total published score</td>
-            <td>{{ total_published_score }}</td>
-        </tr>
-        <tr>
-            <td>Total published marks</td>
-            <td>{{ total_published_marks }}</td>
-        </tr>
-    </tbody>
-</table>
+    <div class="table-container shadow-xs">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Percentage Bracket</th>
+            <th scope="col">Student Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in score_distribution %}
+            <tr>
+              <td class="font-medium text-slate-800">
+                {{ item.label }}
+              </td>
+              <td class="font-bold text-indigo-600 font-mono text-sm">
+                {{ item.count }}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="2" class="p-8 text-center text-slate-500 text-xs">
+                No published scores are currently available for statistical distribution.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-<h3>Score Distribution</h3>
+  <!-- Per-Question Performance Breakdown -->
+  <div class="space-y-3">
+    <h2 class="text-sm font-bold text-slate-900">Per-Question Item Discrimination Analysis</h2>
 
-<table>
-    <thead>
-        <tr>
-            <th>Score Range</th>
-            <th>Number of Students</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in score_distribution %}
-        <tr>
-            <td>{{ item.label }}</td>
-            <td>{{ item.count }}</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="2">No published scores available.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+    <div class="table-container shadow-xs">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Question Prompt</th>
+            <th scope="col">Correct Responses</th>
+            <th scope="col">Total Attempts</th>
+            <th scope="col">Success Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in question_rows %}
+            <tr>
+              <td class="font-medium text-slate-900 max-w-md">
+                {{ item.question.text }}
+              </td>
+              <td class="font-mono text-xs font-semibold text-emerald-700">
+                {{ item.correct_count }}
+              </td>
+              <td class="font-mono text-xs font-semibold text-slate-700">
+                {{ item.attempt_count }}
+              </td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold font-mono text-slate-800">{{ item.correct_rate }}%</span>
+                  <div class="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-indigo-600 rounded-full" style="width: {{ item.correct_rate }}%;"></div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" class="p-8 text-center text-slate-500 text-xs">
+                No question responses recorded for this examination.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-<h3>Per-Question Performance</h3>
-
-<table>
-    <thead>
-        <tr>
-            <th>Question</th>
-            <th>Correct Answers</th>
-            <th>Total Attempts</th>
-            <th>Correct Answer Rate</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in question_rows %}
-        <tr>
-            <td>{{ item.question.text }}</td>
-            <td>{{ item.correct_count }}</td>
-            <td>{{ item.attempt_count }}</td>
-            <td>{{ item.correct_rate }}%</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="4">No questions found for this exam.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-<p>
-    <a href="{% url 'results:exam_review' exam.pk %}">
-        Back to exam results
-    </a>
-</p>
-
-<p>
-    <a href="{% url 'results:exam_list' %}">
-        Back to exam list
-    </a>
-</p>
-
+</div>
 {% endblock %}

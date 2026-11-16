@@ -1,108 +1,416 @@
 {% extends "base.html" %}
 
-{% block title %}{{ title }}{% endblock %}
+{% block title %}{{ title }} - Online Exam Portal{% endblock %}
+{% block breadcrumb_current %}{{ title }}{% endblock %}
 
 {% block content %}
-<h2>{{ title }}</h2>
+<div class="space-y-8">
 
-<p>Signed in as {{ user.email }}.</p>
+  <!-- =========================================================================
+       ADMINISTRATOR DASHBOARD
+       ========================================================================= -->
+  {% if user.role == "administrator" %}
+    <!-- Hero Welcome Banner -->
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-6 sm:p-8 text-white shadow-sm border border-slate-800">
+      <div class="relative z-10 max-w-2xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-400/20 text-purple-300 text-xs font-semibold mb-3">
+          <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+          <span>Administrator Console</span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Welcome back, {{ user.get_full_name|default:user.username }}
+        </h1>
+        <p class="mt-2 text-sm text-slate-300 leading-relaxed">
+          Centralized administration for the Online Examination Portal. Manage user accounts, course enrollments, question repositories, and monitor active campus evaluations.
+        </p>
+      </div>
+      <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+    </div>
 
-{% if user.role == "student" %}
-    <p>
-        <a href="{% url 'results:student_results' %}">My Results</a>
-        |
-        <a href="{% url 'results:student_history' %}">Examination History</a>
-    </p>
+    <!-- Administrative Management Cards Grid -->
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-bold text-slate-900">Platform Management</h2>
+        <span class="text-xs text-slate-500">Institutional Controls</span>
+      </div>
 
-    <h3>Your available examinations</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
 
-    {% if exams %}
-        {% for exam in exams %}
-            <section>
-                <h4>{{ exam.title }}</h4>
+        <!-- User Management Card -->
+        <a href="{% url 'administration:user_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="users" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">User Management</h3>
+            <p class="mt-1.5 text-xs text-slate-500 leading-relaxed">
+              Review institutional accounts, create staff and student profiles, modify roles, and handle account activations.
+            </p>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Manage users</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
 
-                <p>
-                    <strong>Course:</strong>
-                    {{ exam.course.name }} ({{ exam.course.code }})
-                </p>
+        <!-- Course Management Card -->
+        <a href="{% url 'administration:course_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="book-open" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Course Management</h3>
+            <p class="mt-1.5 text-xs text-slate-500 leading-relaxed">
+              Configure academic courses, assign faculty instructors, maintain student enrollment rosters, and adjust course status.
+            </p>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Manage courses</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+        <!-- Question Bank Card -->
+        <a href="{% url 'exams:question_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="help-circle" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Question Bank</h3>
+            <p class="mt-1.5 text-xs text-slate-500 leading-relaxed">
+              Browse institution-wide question repositories, filter by course and difficulty, and manage assessment items.
+            </p>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Browse questions</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+        <!-- Live Exam Monitor Card -->
+        <a href="{% url 'exams:monitor_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="activity" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Live Exam Monitor</h3>
+            <p class="mt-1.5 text-xs text-slate-500 leading-relaxed">
+              Real-time proctoring dashboard tracking active candidate attempts, heartbeats, submitted states, and timeouts.
+            </p>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>View live monitors</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+        <!-- Audit History Card -->
+        <a href="{% url 'administration:audit_log_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Audit History</h3>
+            <p class="mt-1.5 text-xs text-slate-500 leading-relaxed">
+              Immutable audit trails of staff activity, user permission modifications, and administrative security events.
+            </p>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>View audit logs</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- =========================================================================
+       INSTRUCTOR DASHBOARD
+       ========================================================================= -->
+  {% if user.role == "instructor" %}
+    <!-- Hero Welcome Banner -->
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-sm border border-slate-800">
+      <div class="relative z-10 max-w-2xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-blue-300 text-xs font-semibold mb-3">
+          <i data-lucide="award" class="w-3.5 h-3.5"></i>
+          <span>Faculty Portal</span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Welcome back, {{ user.get_full_name|default:user.username }}
+        </h1>
+        <p class="mt-2 text-sm text-slate-300 leading-relaxed">
+          Manage your course examinations, author standardized questions, monitor real-time proctoring feeds, and publish student performance analytics.
+        </p>
+      </div>
+      <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+    </div>
+
+    <!-- Instructor Quick Actions Grid -->
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-bold text-slate-900">Examination Workflows</h2>
+        <span class="text-xs text-slate-500">Course Administration</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+
+        <!-- Question Bank -->
+        <a href="{% url 'exams:question_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="help-circle" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Question Bank</h3>
+            <p class="mt-1 text-xs text-slate-500 leading-relaxed">
+              Create, edit, and bulk-import questions via CSV file.
+            </p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Manage</span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+        <!-- Create Exam -->
+        <a href="{% url 'exams:create' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="plus-circle" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Create Exam</h3>
+            <p class="mt-1 text-xs text-slate-500 leading-relaxed">
+              Schedule time-bounded assessments and select questions.
+            </p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>New exam</span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+        <!-- Live Monitor -->
+        <a href="{% url 'exams:monitor_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="activity" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Live Monitor</h3>
+            <p class="mt-1 text-xs text-slate-500 leading-relaxed">
+              Track in-progress, submitted, and timed-out student states.
+            </p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Monitor</span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+        <!-- Results & Analytics -->
+        <a href="{% url 'results:exam_list' %}" class="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between">
+          <div>
+            <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Exam Results</h3>
+            <p class="mt-1 text-xs text-slate-500 leading-relaxed">
+              Review evaluations, publish final scores, and inspect analytics.
+            </p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Review</span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </a>
+
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- =========================================================================
+       STUDENT DASHBOARD
+       ========================================================================= -->
+  {% if user.role == "student" %}
+    <!-- Hero Welcome Banner -->
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-sm border border-slate-800">
+      <div class="relative z-10 max-w-2xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-400/20 text-emerald-300 text-xs font-semibold mb-3">
+          <i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i>
+          <span>Student Portal</span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Welcome back, {{ user.get_full_name|default:user.username }}
+        </h1>
+        <p class="mt-2 text-sm text-slate-300 leading-relaxed">
+          Access your enrolled course assessments, start active examinations, and review your verified published grades.
+        </p>
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+          <a href="{% url 'results:student_results' %}" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors border border-white/20">
+            <i data-lucide="file-check-2" class="w-4 h-4"></i>
+            <span>My Published Results</span>
+          </a>
+          <a href="{% url 'results:student_history' %}" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors border border-white/20">
+            <i data-lucide="history" class="w-4 h-4"></i>
+            <span>Examination History</span>
+          </a>
+        </div>
+      </div>
+      <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+    </div>
+
+    <!-- Active and Upcoming Examinations -->
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Your Enrolled Examinations</h2>
+          <p class="text-xs text-slate-500">Official examinations for your enrolled courses</p>
+        </div>
+      </div>
+
+      {% if exams %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {% for exam in exams %}
+            <div class="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+              <div>
+                <!-- Top Badges -->
+                <div class="flex items-center justify-between gap-2 mb-3">
+                  <span class="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {{ exam.course.code }}
+                  </span>
+
+                  {% with attempt=exam.student_attempts.0 %}
+                    {% if attempt %}
+                      {% if attempt.status == "in_progress" and attempt.deadline_at > now %}
+                        <span class="badge badge-warning">In Progress</span>
+                      {% elif attempt.status == "in_progress" %}
+                        <span class="badge badge-error">Time Expired</span>
+                      {% elif attempt.status == "timed_out" %}
+                        <span class="badge badge-error">Timed Out</span>
+                      {% else %}
+                        <span class="badge badge-success">Submitted</span>
+                      {% endif %}
+                    {% elif now < exam.start_time %}
+                      <span class="badge badge-neutral">Upcoming</span>
+                    {% elif now >= exam.end_time %}
+                      <span class="badge badge-neutral">Exam Closed</span>
+                    {% else %}
+                      <span class="badge badge-info">Available Now</span>
+                    {% endif %}
+                  {% endwith %}
+                </div>
+
+                <!-- Title & Description -->
+                <h3 class="text-base font-bold text-slate-900 mb-1">{{ exam.title }}</h3>
+                <p class="text-xs text-slate-500 mb-4">{{ exam.course.name }}</p>
 
                 {% if exam.description %}
-                    <p>{{ exam.description }}</p>
+                  <p class="text-xs text-slate-600 mb-4 line-clamp-2">{{ exam.description }}</p>
                 {% endif %}
 
-                <p>
-                    <strong>Starts:</strong> {{ exam.start_time }}
-                    <br>
-                    <strong>Ends:</strong> {{ exam.end_time }}
-                    <br>
-                    <strong>Duration:</strong> {{ exam.duration_minutes }} minutes
-                    <br>
-                    <strong>Total marks:</strong> {{ exam.total_marks }}
-                </p>
+                <!-- Metrics Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 py-3 px-3.5 rounded-xl bg-slate-50 border border-slate-100 text-xs mb-4">
+                  <div>
+                    <span class="text-slate-400 block text-[10px] uppercase font-semibold">Duration</span>
+                    <span class="font-bold text-slate-800">{{ exam.duration_minutes }}m</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-400 block text-[10px] uppercase font-semibold">Total Marks</span>
+                    <span class="font-bold text-slate-800">{{ exam.total_marks }}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-400 block text-[10px] uppercase font-semibold">Starts</span>
+                    <span class="font-medium text-slate-800">{{ exam.start_time|date:"d M, H:i" }}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-400 block text-[10px] uppercase font-semibold">Ends</span>
+                    <span class="font-medium text-slate-800">{{ exam.end_time|date:"d M, H:i" }}</span>
+                  </div>
+                </div>
 
+                <!-- Published Result Status -->
                 {% with attempt=exam.student_attempts.0 %}
-                    {% if attempt %}
-                        {% if attempt.status == "in_progress" and attempt.deadline_at > now %}
-                            <p>Status: In progress</p>
-                            <a href="{% url 'exams:take_attempt' attempt.id %}">
-                                Continue exam
-                            </a>
-                        {% elif attempt.status == "in_progress" %}
-                            <p>Status: Time expired</p>
-                        {% elif attempt.status == "timed_out" %}
-                            <p>Status: Timed out</p>
-                        {% else %}
-                            <p>Status: Submitted</p>
-                        {% endif %}
-
-                        {% if exam.published_result %}
-                            <p>
-                                <strong>Score:</strong>
-                                {{ exam.published_result.score }} / {{ exam.published_result.total_marks }}
-                                ({{ exam.published_result.percentage }}%)
-                            </p>
-                        {% elif attempt.status != "in_progress" or attempt.deadline_at <= now %}
-                            <p>Result: Not published yet</p>
-                        {% endif %}
-                    {% elif now < exam.start_time %}
-                        <p>Status: Upcoming</p>
-                    {% elif now >= exam.end_time %}
-                        <p>Status: Exam window closed</p>
+                  {% if attempt %}
+                    {% if exam.published_result %}
+                      <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                          <i data-lucide="award" class="w-4 h-4 text-emerald-600"></i>
+                          <span class="text-xs font-semibold">Result:</span>
+                        </div>
+                        <span class="text-sm font-bold font-mono">
+                          {{ exam.published_result.score }} / {{ exam.published_result.total_marks }} ({{ exam.published_result.percentage }}%)
+                        </span>
+                      </div>
                     {% else %}
-                        <p>Status: Available</p>
-                        <a href="{% url 'exams:start_attempt' exam.id %}">
-                            Start exam
-                        </a>
+                      <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-xs flex items-center gap-2 mb-4">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Result: Not published yet</span>
+                      </div>
                     {% endif %}
+                  {% endif %}
                 {% endwith %}
-            </section>
-            <hr>
-        {% endfor %}
-    {% else %}
-        <p>No published examinations are currently available for your enrolled courses.</p>
-    {% endif %}
-{% endif %}
+              </div>
 
-{% if user.role == "instructor" or user.role == "administrator" %}
-    <p>
-        <a href="{% url 'exams:question_list' %}">Question bank</a>
-        <br>
-        <a href="{% url 'exams:monitor_list' %}">Monitor live exams</a>
-    </p>
-{% endif %}
+              <!-- Action Buttons -->
+              <div class="pt-4 border-t border-slate-100">
+                {% with attempt=exam.student_attempts.0 %}
+                  {% if attempt %}
+                    {% if attempt.status == "in_progress" and attempt.deadline_at > now %}
+                      <a href="{% url 'exams:take_attempt' attempt.id %}" class="btn btn-primary w-full text-xs font-semibold shadow-xs">
+                        <span>Continue In-Progress Examination</span>
+                        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                      </a>
+                    {% elif attempt.status == "in_progress" %}
+                      <button disabled class="btn btn-secondary w-full text-xs font-medium cursor-not-allowed opacity-60">
+                        Exam time expired
+                      </button>
+                    {% elif attempt.status == "timed_out" %}
+                      <button disabled class="btn btn-secondary w-full text-xs font-medium cursor-not-allowed opacity-60">
+                        Attempt timed out
+                      </button>
+                    {% else %}
+                      <div class="flex items-center justify-between text-xs text-slate-500">
+                        <span class="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
+                          <i data-lucide="check-circle-2" class="w-4 h-4"></i> Submitted
+                        </span>
+                        <a href="{% url 'results:student_history' %}" class="text-indigo-600 hover:text-indigo-800 font-semibold">
+                          View in History &rarr;
+                        </a>
+                      </div>
+                    {% endif %}
+                  {% elif now < exam.start_time %}
+                    <button disabled class="btn btn-secondary w-full text-xs font-medium cursor-not-allowed opacity-75">
+                      Opens {{ exam.start_time|date:"d M Y, H:i" }}
+                    </button>
+                  {% elif now >= exam.end_time %}
+                    <button disabled class="btn btn-secondary w-full text-xs font-medium cursor-not-allowed opacity-60">
+                      Examination window closed
+                    </button>
+                  {% else %}
+                    <a href="{% url 'exams:start_attempt' exam.id %}" class="btn btn-primary w-full text-xs font-semibold shadow-sm hover:shadow-md">
+                      <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                      <span>Start Examination Now</span>
+                    </a>
+                  {% endif %}
+                {% endwith %}
+              </div>
 
-{% if user.role == "instructor" %}
-    <p>
-        <a href="{% url 'results:exam_list' %}">Exam results</a>
-    </p>
-{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <!-- Empty State -->
+        <div class="p-12 rounded-2xl bg-white border border-slate-200 text-center max-w-lg mx-auto">
+          <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="calendar" class="w-6 h-6"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">No active examinations</h3>
+          <p class="mt-1 text-xs text-slate-500 leading-relaxed">
+            There are no published examinations currently scheduled for your enrolled courses. Check back later or contact your instructor.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
 
-{% if user.role == "administrator" %}
-    <p>
-        <a href="{% url 'administration:user_list' %}">Manage users</a>
-        <br>
-        <a href="{% url 'administration:course_list' %}">Manage courses</a>
-    </p>
-{% endif %}
-
+</div>
 {% endblock %}

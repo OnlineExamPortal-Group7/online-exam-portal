@@ -1,53 +1,138 @@
 {% extends "base.html" %}
-{% block title %}Question bank{% endblock %}
+
+{% block title %}Question Bank - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Examinations{% endblock %}
+{% block breadcrumb_current %}Question Bank{% endblock %}
+
 {% block content %}
-<h2>Question bank</h2>
-{% include "exams/questions/_messages.html" %}
-<p><a href="{% url 'exams:question_create' %}">Add a question</a></p>
+<div class="space-y-6">
 
-<form method="get" aria-label="Filter questions">
-  {{ filter_form.as_p }}
-  <button type="submit">Filter</button>
-  <a href="{% url 'exams:question_list' %}">Clear</a>
-</form>
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Question Bank</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Centralized repository of multiple-choice questions for course examinations.
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'exams:question_import' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="file-up" class="w-4 h-4"></i>
+        <span>Import CSV</span>
+      </a>
+      <a href="{% url 'exams:question_create' %}" class="btn btn-primary btn-sm shadow-xs">
+        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+        <span>Add Question</span>
+      </a>
+    </div>
+  </div>
 
-{% if questions %}
-<table>
-  <thead>
-    <tr>
-      <th scope="col">Question</th><th scope="col">Course</th><th scope="col">Difficulty</th>
-      <th scope="col">Marks</th><th scope="col">Choices</th><th scope="col">Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for question in questions %}
-    <tr>
-      <td><a href="{% url 'exams:question_detail' question.pk %}">{{ question.text|truncatechars:80 }}</a></td>
-      <td>{{ question.course.code }}</td>
-      <td>{{ question.get_difficulty_display }}</td>
-      <td>{{ question.marks }}</td>
-      <td>{{ question.choices.all|length }}</td>
-      <td>
-        <a href="{% url 'exams:question_update' question.pk %}">Edit</a>
-        <a href="{% url 'exams:question_delete' question.pk %}">Delete</a>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+  {% include "exams/questions/_messages.html" %}
 
-{% if is_paginated %}
-<nav aria-label="Pages">
-  {% if page_obj.has_previous %}
-    <a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+  <!-- Filter Panel -->
+  <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+    <form method="get" aria-label="Filter questions" class="flex flex-wrap items-end gap-4">
+      <div class="flex-1 min-w-[200px] text-xs">
+        {{ filter_form.as_p }}
+      </div>
+      <div class="flex items-center gap-2 pb-1">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+          <span>Apply Filter</span>
+        </button>
+        <a href="{% url 'exams:question_list' %}" class="btn btn-secondary btn-sm">
+          Clear
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Questions Table -->
+  {% if questions %}
+    <div class="table-container shadow-xs">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Question Text</th>
+            <th scope="col">Course</th>
+            <th scope="col">Difficulty</th>
+            <th scope="col">Marks</th>
+            <th scope="col">Choices</th>
+            <th scope="col" class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for question in questions %}
+            <tr>
+              <td class="font-medium text-slate-900 max-w-md">
+                <a href="{% url 'exams:question_detail' question.pk %}" class="hover:text-indigo-600 transition-colors">
+                  {{ question.text|truncatechars:80 }}
+                </a>
+              </td>
+              <td>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-mono font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {{ question.course.code }}
+                </span>
+              </td>
+              <td>
+                {% if question.difficulty == "easy" %}
+                  <span class="badge badge-success">Easy</span>
+                {% elif question.difficulty == "medium" %}
+                  <span class="badge badge-warning">Medium</span>
+                {% else %}
+                  <span class="badge badge-error">Hard</span>
+                {% endif %}
+              </td>
+              <td class="text-xs font-semibold text-slate-700">
+                {{ question.marks }} pts
+              </td>
+              <td class="text-xs text-slate-500">
+                {{ question.choices.all|length }} options
+              </td>
+              <td class="text-right">
+                <div class="inline-flex items-center gap-2 justify-end">
+                  <a href="{% url 'exams:question_update' question.pk %}" class="p-1 text-slate-400 hover:text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors" title="Edit question">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                  </a>
+                  <a href="{% url 'exams:question_delete' question.pk %}" class="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors" title="Delete question">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+      <nav class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-600" aria-label="Question bank pages">
+        <div>
+          <span>Page <strong class="text-slate-900">{{ page_obj.number }}</strong> of <strong class="text-slate-900">{{ paginator.num_pages }}</strong></span>
+        </div>
+        <div class="flex items-center gap-2">
+          {% if page_obj.has_previous %}
+            <a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.previous_page_number }}" class="btn btn-secondary btn-sm py-1 px-3">
+              &larr; Previous
+            </a>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.next_page_number }}" class="btn btn-secondary btn-sm py-1 px-3">
+              Next &rarr;
+            </a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="p-12 bg-white rounded-2xl border border-slate-200 text-center">
+      <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+        <i data-lucide="help-circle" class="w-6 h-6"></i>
+      </div>
+      <h2 class="text-base font-bold text-slate-900">No questions found</h2>
+      <p class="text-xs text-slate-500 mt-1">Add a new question or import a CSV file to populate the question bank.</p>
+    </div>
   {% endif %}
-  Page {{ page_obj.number }} of {{ paginator.num_pages }}
-  {% if page_obj.has_next %}
-    <a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-  {% endif %}
-</nav>
-{% endif %}
-{% else %}
-<p>No questions found.</p>
-{% endif %}
+
+</div>
 {% endblock %}
