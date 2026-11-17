@@ -1,0 +1,95 @@
+
+{% extends "base.html" %}
+
+{% block title %}Manage Examinations - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Examinations{% endblock %}
+{% block breadcrumb_current %}Manage Examinations{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Manage Examinations</h1>
+      <p class="mt-1 text-sm text-slate-500">
+        Review, schedule and publish your examinations.
+      </p>
+    </div>
+    <a href="{% url 'exams:create' %}" class="btn btn-primary">
+      + Create Examination
+    </a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="rounded-xl border p-4 text-sm
+        {% if message.tags == 'error' %}
+          bg-rose-50 border-rose-200 text-rose-700
+        {% else %}
+          bg-emerald-50 border-emerald-200 text-emerald-700
+        {% endif %}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    {% for exam in exams %}
+      <div class="p-5 sm:p-6 border-b border-slate-100 last:border-0">
+        <div class="flex flex-wrap justify-between gap-4">
+          <div class="space-y-2">
+            <h2 class="font-bold text-slate-900">{{ exam.title }}</h2>
+            <p class="text-sm text-slate-500">
+              {{ exam.course.code }} — {{ exam.course.name }}
+            </p>
+            <p class="text-xs text-slate-500">
+              Starts: {{ exam.start_time|date:"d M Y, h:i A" }}
+              &nbsp;|&nbsp;
+              Ends: {{ exam.end_time|date:"d M Y, h:i A" }}
+            </p>
+            <p class="text-xs text-slate-500">
+              Questions: {{ exam.exam_questions.count }}
+              &nbsp;|&nbsp; Marks: {{ exam.total_marks }}
+            </p>
+          </div>
+
+          <div class="flex flex-col items-start sm:items-end gap-3">
+            <span class="px-3 py-1 rounded-full text-xs font-semibold
+              {% if exam.status == 'published' %}
+                bg-emerald-100 text-emerald-700
+              {% elif exam.status == 'draft' %}
+                bg-amber-100 text-amber-700
+              {% else %}
+                bg-slate-100 text-slate-700
+              {% endif %}">
+              {{ exam.get_status_display }}
+            </span>
+
+            {% if exam.status == 'draft' %}
+              <form method="post"
+                    action="{% url 'exams:publish_exam' exam.id %}"
+                    onsubmit="return confirm('Publish this examination for enrolled students?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">
+                  Publish Exam
+                </button>
+              </form>
+            {% elif exam.status == 'published' %}
+              <span class="text-xs font-medium text-emerald-700">
+                Available to eligible students
+              </span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% empty %}
+      <div class="p-10 text-center">
+        <h3 class="font-semibold text-slate-800">No examinations created yet</h3>
+        <p class="mt-2 text-sm text-slate-500">
+          Create your first examination to get started.
+        </p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

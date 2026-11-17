@@ -593,3 +593,38 @@ def submit_attempt(request, attempt_id):
         "Your exam has been submitted.",
     )
     return redirect("accounts:student_dashboard")
+
+
+@role_required(User.Role.INSTRUCTOR)
+def exam_list(request):
+    """List examinations created by the signed-in instructor."""
+    exams = (
+        Exam.objects.filter(created_by=request.user)
+        .select_related("course")
+        .order_by("-created_at")
+    )
+    return render(request, "exams/exam_list.html", {"exams": exams})
+
+
+@role_required(User.Role.INSTRUCTOR)
+@require_POST
+def publish_exam(request, exam_id):
+    """Publish an instructor's draft exam for eligible students."""
+    exam = get_object_or_404(
+        Exam,
+        pk=exam_id,
+        created_by=request.user,
+    )
+
+    if exam.status == Exam.Status.PUBLISHED:
+        messages.info(request, "This examination is already published.")
+    elif exam.end_time <= timezone.now():
+        messages.error(request, "Cannot publish an examination whose scheduled end time has passed.")
+    elif not exam.exam_questions.exists():
+        messages.error(request, "Add at least one question before publishing.")
+    else:
+        exam.status = Exam.Status.PUBLISHED
+        exam.save(update_fields=["status", "updated_at"])
+        messages.success(request, "Examination published successfully. Enrolled students can now see it.")
+
+    return redirect("exams:exam_list")

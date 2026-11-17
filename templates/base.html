@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en" class="h-full bg-slate-50">
 <head>
@@ -49,6 +50,7 @@
 
   {% block extra_head %}{% endblock %}
 </head>
+
 <body class="bg-slate-50 font-sans text-slate-900 antialiased min-h-screen flex flex-col">
 
 {% block root_layout %}
@@ -75,6 +77,7 @@
               <span class="text-[10px] text-indigo-400 font-mono tracking-wider uppercase block">Assessment v2.0</span>
             </div>
           </a>
+
           <button type="button" class="lg:hidden text-slate-400 hover:text-white p-1" onclick="toggleSidebar()">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
@@ -132,6 +135,12 @@
             <a href="{% url 'exams:question_list' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 hover:text-white transition-colors group text-slate-300">
               <i data-lucide="help-circle" class="w-4 h-4 text-slate-400 group-hover:text-indigo-400"></i>
               <span>Question Bank</span>
+            </a>
+
+            <!-- NEW: Manage Examinations -->
+            <a href="{% url 'exams:exam_list' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 hover:text-white transition-colors group text-slate-300">
+              <i data-lucide="clipboard-list" class="w-4 h-4 text-slate-400 group-hover:text-indigo-400"></i>
+              <span>Manage Examinations</span>
             </a>
 
             <a href="{% url 'exams:create' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 hover:text-white transition-colors group text-slate-300">
