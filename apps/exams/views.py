@@ -617,14 +617,27 @@ def publish_exam(request, exam_id):
     )
 
     if exam.status == Exam.Status.PUBLISHED:
-        messages.info(request, "This examination is already published.")
+        messages.info(
+            request,
+            "This examination is already published.",
+        )
     elif exam.end_time <= timezone.now():
-        messages.error(request, "Cannot publish an examination whose scheduled end time has passed.")
+        messages.error(
+            request,
+            "Cannot publish an examination whose scheduled end time has passed.",
+        )
     elif not exam.exam_questions.exists():
-        messages.error(request, "Add at least one question before publishing.")
+        messages.error(
+            request,
+            "Add at least one question before publishing.",
+        )
     else:
         exam.status = Exam.Status.PUBLISHED
         exam.save(update_fields=["status", "updated_at"])
-        messages.success(request, "Examination published successfully. Enrolled students can now see it.")
+        messages.success(
+            request,
+            "Examination published successfully. "
+            "Enrolled students can now see it.",
+        )
 
     return redirect("exams:exam_list")
