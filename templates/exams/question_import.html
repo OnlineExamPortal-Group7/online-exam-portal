@@ -1,31 +1,79 @@
 {% extends "base.html" %}
-{% block title %}Import questions{% endblock %}
+
+{% block title %}Import Questions CSV - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Question Bank{% endblock %}
+{% block breadcrumb_current %}CSV Import{% endblock %}
+
 {% block content %}
-<h2>Import questions from CSV</h2>
-{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
+<div class="max-w-2xl mx-auto space-y-6">
 
-{% if errors %}
-<div role="alert">
-  <p>Nothing was imported. Fix these problems and upload the file again:</p>
-  <ul>
-    {% for error in errors %}<li>{{ error }}</li>{% endfor %}
-  </ul>
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Bulk Import Questions</h1>
+      <p class="mt-1 text-xs text-slate-500">Upload multiple-choice assessment questions via standardized CSV file.</p>
+    </div>
+    <a href="{% url 'exams:question_list' %}" class="btn btn-secondary btn-sm">
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Back</span>
+    </a>
+  </div>
+
+  {% if errors %}
+    <div class="p-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2" role="alert">
+      <div class="flex items-center gap-2 font-bold text-sm">
+        <i data-lucide="alert-circle" class="w-5 h-5 text-rose-600 shrink-0"></i>
+        <span>Import Validation Errors</span>
+      </div>
+      <p>Nothing was imported. Fix these errors and try again:</p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <!-- Upload Card -->
+  <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+        <a href="{% url 'exams:question_list' %}" class="btn btn-secondary text-xs">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-primary text-xs font-semibold">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+          <span>Import CSV File</span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Format Guide Card -->
+  <div class="bg-slate-100/80 p-6 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold text-slate-900 text-sm">Required CSV Specification</h2>
+      <a href="{% url 'exams:question_import_sample' %}" class="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>Download Sample CSV</span>
+      </a>
+    </div>
+
+    <p>The first line of your file must define the exact header columns:</p>
+    <div class="p-2.5 rounded-lg bg-slate-900 text-slate-100 font-mono text-[11px] overflow-x-auto">
+      course,topic,difficulty,question,option_1,option_2,...,option_6,correct,marks
+    </div>
+
+    <ul class="list-disc list-inside space-y-1 pl-1 text-slate-600">
+      <li><strong class="text-slate-800">course</strong>: Valid code of an active course assigned to you.</li>
+      <li><strong class="text-slate-800">difficulty</strong>: One of <code class="bg-white px-1 py-0.5 rounded border">easy</code>, <code class="bg-white px-1 py-0.5 rounded border">medium</code>, or <code class="bg-white px-1 py-0.5 rounded border">hard</code>.</li>
+      <li><strong class="text-slate-800">options</strong>: Between 2 and 6 sequential option columns.</li>
+      <li><strong class="text-slate-800">correct</strong>: The 1-based index number of the correct option (e.g. 1, 2).</li>
+      <li><strong class="text-slate-800">marks</strong>: Optional positive integer (defaults to 1 point).</li>
+    </ul>
+  </div>
+
 </div>
-{% endif %}
-
-<form method="post" enctype="multipart/form-data">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Import</button>
-</form>
-
-<h3>File format</h3>
-<p>First row: <code>course,topic,difficulty,question,option_1,option_2,...,option_6,correct,marks</code></p>
-<ul>
-  <li><code>course</code>: code of one of your active courses</li>
-  <li><code>difficulty</code>: easy, medium or hard</li>
-  <li>2 to 6 options, filled in order; <code>correct</code> is the number of the one correct option</li>
-  <li><code>option_3</code> to <code>option_6</code> and <code>marks</code> (default 1) are optional</li>
-</ul>
-<p><a href="{% url 'exams:question_import_sample' %}">Download an example CSV</a></p>
 {% endblock %}

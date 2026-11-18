@@ -1,49 +1,92 @@
-
 {% extends "base.html" %}
 
-{% block title %}My Results{% endblock %}
+{% block title %}My Examination Results - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Academics{% endblock %}
+{% block breadcrumb_current %}My Results{% endblock %}
 
 {% block content %}
-<h2>My Results</h2>
+<div class="space-y-6">
 
-<p>Here you can view your examination results published by your instructors.</p>
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">My Examination Results</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Official scores and evaluation feedback published by your course instructors.
+      </p>
+    </div>
 
-<p>
-    <a href="{% url 'results:student_history' %}">View Examination History</a>
-    |
-    <a href="{% url 'accounts:student_dashboard' %}">Back to Dashboard</a>
-</p>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'results:student_history' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+        <span>Full Attempt History</span>
+      </a>
+      <a href="{% url 'accounts:student_dashboard' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>Dashboard</span>
+      </a>
+    </div>
+  </div>
 
-{% if results %}
-    <table border="1" cellpadding="8">
+  {% if results %}
+    <div class="table-container shadow-xs">
+      <table>
         <thead>
-            <tr>
-                <th>Exam</th>
-                <th>Course</th>
-                <th>Marks</th>
-                <th>Percentage</th>
-                <th>Exam End Date</th>
-                <th>Action</th>
-            </tr>
+          <tr>
+            <th scope="col">Examination Title</th>
+            <th scope="col">Course</th>
+            <th scope="col">Marks Obtained</th>
+            <th scope="col">Percentage</th>
+            <th scope="col">Exam End Date</th>
+            <th scope="col" class="text-right">Action</th>
+          </tr>
         </thead>
         <tbody>
-            {% for result in results %}
-                <tr>
-                    <td>{{ result.attempt.exam.title }}</td>
-                    <td>{{ result.attempt.exam.course.name }}</td>
-                    <td>{{ result.score }} / {{ result.total_marks }}</td>
-                    <td>{{ result.percentage }}%</td>
-                    <td>{{ result.attempt.exam.end_time|date:"d M Y, h:i A" }}</td>
-                    <td>
-                        <a href="{% url 'results:student_result_detail' result.pk %}">
-                            View Details
-                        </a>
-                    </td>
-                </tr>
-            {% endfor %}
+          {% for result in results %}
+            <tr>
+              <td class="font-medium text-slate-900">
+                <a href="{% url 'results:student_result_detail' result.pk %}" class="hover:text-indigo-600 transition-colors">
+                  {{ result.attempt.exam.title }}
+                </a>
+              </td>
+              <td>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  {{ result.attempt.exam.course.name }}
+                </span>
+              </td>
+              <td class="font-mono text-xs font-bold text-slate-800">
+                {{ result.score }} / {{ result.total_marks }}
+              </td>
+              <td>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if result.percentage >= 50 %}bg-emerald-50 text-emerald-800 border border-emerald-200{% else %}bg-rose-50 text-rose-800 border border-rose-200{% endif %}">
+                  {{ result.percentage }}%
+                </span>
+              </td>
+              <td class="text-xs font-mono text-slate-600">
+                {{ result.attempt.exam.end_time|date:"d M Y, h:i A" }}
+              </td>
+              <td class="text-right">
+                <a href="{% url 'results:student_result_detail' result.pk %}" class="btn btn-secondary btn-sm py-1 px-3 text-xs font-semibold">
+                  <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                  <span>View Details</span>
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
         </tbody>
-    </table>
-{% else %}
-    <p>You do not have any published results yet.</p>
-{% endif %}
+      </table>
+    </div>
+  {% else %}
+    <div class="p-12 bg-white rounded-2xl border border-slate-200 text-center">
+      <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+        <i data-lucide="award" class="w-6 h-6"></i>
+      </div>
+      <h2 class="text-base font-bold text-slate-900">No published results yet</h2>
+      <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+        You do not have any published results yet.
+      </p>
+    </div>
+  {% endif %}
+
+</div>
 {% endblock %}

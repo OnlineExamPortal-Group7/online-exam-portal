@@ -1,61 +1,102 @@
-
 {% extends "base.html" %}
 
-{% block title %}Examination History{% endblock %}
+{% block title %}Examination History - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Academics{% endblock %}
+{% block breadcrumb_current %}Attempt History{% endblock %}
 
 {% block content %}
-<h2>Examination History</h2>
+<div class="space-y-6">
 
-<p>View your previous examination attempts and their status.</p>
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Examination Attempt History</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Comprehensive log of all previous examination sessions, timestamps, and evaluation statuses.
+      </p>
+    </div>
 
-<p>
-    <a href="{% url 'results:student_results' %}">My Results</a>
-    |
-    <a href="{% url 'accounts:student_dashboard' %}">Back to Dashboard</a>
-</p>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'results:student_results' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="award" class="w-3.5 h-3.5"></i>
+        <span>My Published Results</span>
+      </a>
+      <a href="{% url 'accounts:student_dashboard' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>Dashboard</span>
+      </a>
+    </div>
+  </div>
 
-{% if attempts %}
-    <table border="1" cellpadding="8">
+  {% if attempts %}
+    <div class="table-container shadow-xs">
+      <table>
         <thead>
-            <tr>
-                <th>Exam</th>
-                <th>Course</th>
-                <th>Started At</th>
-                <th>Submitted At</th>
-                <th>Status</th>
-                <th>Result</th>
-            </tr>
+          <tr>
+            <th scope="col">Examination Title</th>
+            <th scope="col">Course</th>
+            <th scope="col">Started At</th>
+            <th scope="col">Submitted At</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-right">Result Details</th>
+          </tr>
         </thead>
         <tbody>
-            {% for attempt in attempts %}
-                <tr>
-                    <td>{{ attempt.exam.title }}</td>
-                    <td>{{ attempt.exam.course.name }}</td>
-                    <td>{{ attempt.started_at|date:"d M Y, h:i A" }}</td>
-                    <td>
-                        {% if attempt.submitted_at %}
-                            {{ attempt.submitted_at|date:"d M Y, h:i A" }}
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
-                    <td>{{ attempt.get_status_display }}</td>
-                    <td>
-                        {% if attempt.published_result %}
-                            {{ attempt.published_result.score }} /
-                            {{ attempt.published_result.total_marks }}
-                            <a href="{% url 'results:student_result_detail' attempt.published_result.pk %}">
-                                View Details
-                            </a>
-                        {% else %}
-                            Not published
-                        {% endif %}
-                    </td>
-                </tr>
-            {% endfor %}
+          {% for attempt in attempts %}
+            <tr>
+              <td class="font-medium text-slate-900">
+                {{ attempt.exam.title }}
+              </td>
+              <td>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  {{ attempt.exam.course.name }}
+                </span>
+              </td>
+              <td class="text-xs font-mono text-slate-600">
+                {{ attempt.started_at|date:"d M Y, h:i A" }}
+              </td>
+              <td class="text-xs font-mono text-slate-600">
+                {% if attempt.submitted_at %}
+                  {{ attempt.submitted_at|date:"d M Y, h:i A" }}
+                {% else %}
+                  &ndash;
+                {% endif %}
+              </td>
+              <td>
+                {% if attempt.status == "submitted" %}
+                  <span class="badge badge-success">Submitted</span>
+                {% elif attempt.status == "timed_out" %}
+                  <span class="badge badge-error">Timed Out</span>
+                {% elif attempt.status == "in_progress" %}
+                  <span class="badge badge-warning">In Progress</span>
+                {% else %}
+                  <span class="badge badge-neutral">{{ attempt.get_status_display }}</span>
+                {% endif %}
+              </td>
+              <td class="text-right">
+                {% if attempt.published_result %}
+                  <a href="{% url 'results:student_result_detail' attempt.published_result.pk %}" class="btn btn-secondary btn-sm py-1 px-3 text-xs font-semibold inline-flex items-center gap-1.5">
+                    <span class="text-indigo-600 font-bold font-mono">{{ attempt.published_result.score }} / {{ attempt.published_result.total_marks }}</span>
+                    <span>&bull; View</span>
+                  </a>
+                {% else %}
+                  <span class="text-xs text-slate-400 italic">Not published</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
         </tbody>
-    </table>
-{% else %}
-    <p>You have not attempted any examinations yet.</p>
-{% endif %}
+      </table>
+    </div>
+  {% else %}
+    <div class="p-12 bg-white rounded-2xl border border-slate-200 text-center">
+      <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+        <i data-lucide="clock" class="w-6 h-6"></i>
+      </div>
+      <h2 class="text-base font-bold text-slate-900">No attempts on record</h2>
+      <p class="text-xs text-slate-500 mt-1">You have not participated in any examinations yet.</p>
+    </div>
+  {% endif %}
+
+</div>
 {% endblock %}

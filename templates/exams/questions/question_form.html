@@ -1,36 +1,95 @@
 {% extends "base.html" %}
-{% block title %}{% if creating %}Add question{% else %}Edit question{% endif %}{% endblock %}
+
+{% block title %}{% if creating %}Add Question{% else %}Edit Question #{{ question.pk }}{% endif %} - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Question Bank{% endblock %}
+{% block breadcrumb_current %}{% if creating %}New Question{% else %}Edit Question{% endif %}{% endblock %}
+
 {% block content %}
-<h2>{% if creating %}Add a question{% else %}Edit question {{ question.pk }}{% endif %}</h2>
-{% include "exams/questions/_messages.html" %}
-<form method="post" novalidate>
-  {% csrf_token %}
-  {{ form.as_p }}
+<div class="max-w-3xl mx-auto space-y-6">
 
-  <fieldset>
-    <legend>Answer choices (2 to 6, exactly one correct)</legend>
-    {{ formset.management_form }}
-    {% if formset.non_form_errors %}<div role="alert">{{ formset.non_form_errors }}</div>{% endif %}
-    {% for choice_form in formset %}
-      <div>
-        {{ choice_form.id }}
-        {{ choice_form.non_field_errors }}
-        <p>
-          <label for="{{ choice_form.text.id_for_label }}">Choice {{ forloop.counter }}</label>
-          {{ choice_form.text }}
-          <label for="{{ choice_form.is_correct.id_for_label }}">Correct</label>
-          {{ choice_form.is_correct }}
-          {% if choice_form.instance.pk %}
-            <label for="{{ choice_form.DELETE.id_for_label }}">Remove</label>
-            {{ choice_form.DELETE }}
-          {% endif %}
-        </p>
-        {{ choice_form.text.errors }}
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">
+        {% if creating %}Add Question to Repository{% else %}Edit Question #{{ question.pk }}{% endif %}
+      </h1>
+      <p class="mt-1 text-xs text-slate-500">Configure prompt, course affiliation, marks, and multiple-choice options.</p>
+    </div>
+    <a href="{% url 'exams:question_list' %}" class="btn btn-secondary btn-sm">
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Back</span>
+    </a>
+  </div>
+
+  {% include "exams/questions/_messages.html" %}
+
+  <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs">
+    <form method="post" novalidate class="space-y-6">
+      {% csrf_token %}
+
+      <!-- Question Attributes -->
+      <div class="space-y-4">
+        {{ form.as_p }}
       </div>
-    {% endfor %}
-  </fieldset>
 
-  <button type="submit">Save question</button>
-  <a href="{% url 'exams:question_list' %}">Cancel</a>
-</form>
+      <!-- Multiple-Choice Formset -->
+      <fieldset class="pt-6 border-t border-slate-200">
+        <legend class="text-sm font-bold text-slate-900 mb-2">
+          Answer Choices (2 to 6 options, mark exactly one correct)
+        </legend>
+
+        {{ formset.management_form }}
+
+        {% if formset.non_form_errors %}
+          <div class="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold mb-4" role="alert">
+            {{ formset.non_form_errors }}
+          </div>
+        {% endif %}
+
+        <div class="space-y-3">
+          {% for choice_form in formset %}
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              {{ choice_form.id }}
+              {{ choice_form.non_field_errors }}
+
+              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <span class="text-xs font-bold text-slate-600 shrink-0">Choice {{ forloop.counter }}</span>
+                <div class="flex-1">
+                  {{ choice_form.text }}
+                </div>
+                <div class="flex items-center gap-4 shrink-0 text-xs font-medium text-slate-700">
+                  <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                    {{ choice_form.is_correct }}
+                    <span>Correct</span>
+                  </label>
+                  {% if choice_form.instance.pk %}
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer text-rose-600">
+                      {{ choice_form.DELETE }}
+                      <span>Remove</span>
+                    </label>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if choice_form.text.errors %}
+                <p class="text-xs text-rose-600">{{ choice_form.text.errors.0 }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
+        <a href="{% url 'exams:question_list' %}" class="btn btn-secondary text-xs">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-primary text-xs font-semibold">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i>
+          <span>Save Question</span>
+        </button>
+      </div>
+
+    </form>
+  </div>
+
+</div>
 {% endblock %}

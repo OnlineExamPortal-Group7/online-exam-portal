@@ -1,18 +1,49 @@
 {% extends "base.html" %}
-{% block title %}Delete question{% endblock %}
+
+{% block title %}Delete Question #{{ question.pk }} - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Question Bank{% endblock %}
+{% block breadcrumb_current %}Confirm Delete{% endblock %}
+
 {% block content %}
-<h2>Delete question {{ question.pk }}?</h2>
-{% include "exams/questions/_messages.html" %}
-<p>{{ question.text|truncatechars:200 }}</p>
-{% if usage.exams or usage.answers %}
-  <p role="alert">This question is used in {{ usage.exams }} exam(s) and cannot be deleted.</p>
-  <a href="{% url 'exams:question_detail' question.pk %}">Back</a>
-{% else %}
-  <form method="post">
-    {% csrf_token %}
-    <p>This cannot be undone.</p>
-    <button type="submit">Yes, delete</button>
-    <a href="{% url 'exams:question_detail' question.pk %}">Cancel</a>
-  </form>
-{% endif %}
+<div class="max-w-lg mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-xs space-y-6 text-center">
+
+  <div class="w-14 h-14 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+    <i data-lucide="alert-triangle" class="w-7 h-7"></i>
+  </div>
+
+  <div>
+    <h1 class="text-xl font-bold text-slate-900">Delete Question #{{ question.pk }}?</h1>
+    <p class="mt-2 text-xs text-slate-500 leading-relaxed italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+      "{{ question.text|truncatechars:180 }}"
+    </p>
+  </div>
+
+  {% if usage.exams or usage.answers %}
+    <div class="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium text-left" role="alert">
+      <p class="font-bold">Cannot Delete Question</p>
+      <p class="mt-1">This question is currently utilized in {{ usage.exams }} active or completed exam(s) and cannot be removed.</p>
+    </div>
+    <div class="pt-2">
+      <a href="{% url 'exams:question_detail' question.pk %}" class="btn btn-secondary w-full text-xs">
+        Return to Question Details
+      </a>
+    </div>
+  {% else %}
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      <p class="text-xs text-rose-600 font-semibold">
+        This action is permanent and cannot be undone.
+      </p>
+      <div class="flex items-center justify-center gap-3">
+        <a href="{% url 'exams:question_detail' question.pk %}" class="btn btn-secondary text-xs flex-1">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-danger text-xs font-semibold flex-1">
+          Yes, Delete Question
+        </button>
+      </div>
+    </form>
+  {% endif %}
+
+</div>
 {% endblock %}

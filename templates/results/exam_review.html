@@ -1,51 +1,168 @@
 {% extends "base.html" %}
-{% block title %}{{ exam.title }} results{% endblock %}
+
+{% block title %}Review Results: {{ exam.title }} - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Results{% endblock %}
+{% block breadcrumb_current %}{{ exam.title }}{% endblock %}
+
 {% block content %}
-<h2>{{ exam.title }} results</h2>
-{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
-<p>
-  <strong>Course:</strong> {{ exam.course.code }} - {{ exam.course.name }}
-  <br>
-  <strong>Window:</strong> {{ exam.start_time }} to {{ exam.end_time }}
-  <br>
-  <strong>Total marks:</strong> {{ exam.total_marks }}
-  <br>
-  <strong>Scored attempts:</strong> {{ scored_count }} of {{ rows|length }} students
-  {% if average_percentage is not None %}(average {{ average_percentage }}%){% endif %}
-</p>
+<div class="space-y-6">
 
-<h3>Publication</h3>
-{% if publication %}
-<p>Published on {{ publication.published_at }} by {{ publication.published_by.username }}.
-  Students can see their scores.</p>
-{% elif not window_closed %}
-<p>The exam is still open. Results can be published after {{ exam.end_time }}.</p>
-{% else %}
-<p>Not published. Students cannot see their scores yet.</p>
-<form method="post" action="{% url 'results:publish' exam.pk %}">
-  {% csrf_token %}
-  <button type="submit">Publish results</button>
-</form>
-{% endif %}
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <span class="px-2.5 py-0.5 rounded-md text-xs font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">
+          {{ exam.course.code }}
+        </span>
+        <span class="text-xs text-slate-400 font-semibold">{{ exam.course.name }}</span>
+      </div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">{{ exam.title }} Results</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Review candidate submissions, total marks, and manage public score publication.
+      </p>
+    </div>
 
-<h3>Scores</h3>
-<table>
-  <thead>
-    <tr><th>Username</th><th>Name</th><th>Attempt</th><th>Score</th><th>Percentage</th></tr>
-  </thead>
-  <tbody>
-    {% for row in rows %}
-    <tr>
-      <td>{{ row.student.username }}</td>
-      <td>{{ row.student.get_full_name }}</td>
-      <td>{% if row.attempt %}{{ row.attempt.get_status_display }}{% else %}Not attempted{% endif %}</td>
-      <td>{% if row.result %}{{ row.result.score }} / {{ row.result.total_marks }}{% else %}-{% endif %}</td>
-      <td>{% if row.result %}{{ row.result.percentage }}%{% else %}-{% endif %}</td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="5">No students are enrolled in this course.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-<p><a href="{% url 'results:exam_list' %}">Back to exam results</a></p>
+    <div class="flex items-center gap-2">
+      {% if publication %}
+        <a href="{% url 'results:exam_analytics' exam.pk %}" class="btn btn-primary btn-sm">
+          <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>
+          <span>Class Analytics</span>
+        </a>
+      {% endif %}
+      <a href="{% url 'results:exam_list' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>All Results</span>
+      </a>
+    </div>
+  </div>
+
+  {% if messages %}
+    <div class="space-y-2">
+      {% for message in messages %}
+        <div class="p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 {% if message.tags == 'error' %}bg-rose-50 text-rose-800 border-rose-200{% elif message.tags == 'success' %}bg-emerald-50 text-emerald-800 border-emerald-200{% else %}bg-indigo-50 text-indigo-800 border-indigo-200{% endif %}">
+          <i data-lucide="info" class="w-4 h-4 shrink-0"></i>
+          <span>{{ message }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <!-- KPI Overview Grid -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Total Marks</span>
+      <span class="text-2xl font-extrabold text-slate-900 block mt-1">{{ exam.total_marks }}</span>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Scored Attempts</span>
+      <span class="text-2xl font-extrabold text-slate-900 block mt-1">{{ scored_count }} / {{ rows|length }}</span>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Class Average</span>
+      <span class="text-2xl font-extrabold text-indigo-600 block mt-1">
+        {% if average_percentage is not None %}{{ average_percentage }}%{% else %}&ndash;{% endif %}
+      </span>
+    </div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <span class="block text-[11px] font-semibold uppercase text-slate-400">Window Closes</span>
+      <span class="text-sm font-bold text-slate-800 block mt-2 font-mono">{{ exam.end_time|date:"d M, H:i" }}</span>
+    </div>
+  </div>
+
+  <!-- Publication Control Card -->
+  <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h2 class="text-sm font-bold text-slate-900">Score Publication Status</h2>
+      <p class="text-xs text-slate-500 mt-1">
+        {% if publication %}
+          <span class="text-emerald-700 font-semibold inline-flex items-center gap-1.5">
+            <i data-lucide="check-circle" class="w-4 h-4"></i> Published on {{ publication.published_at|date:"d M Y, H:i" }} by {{ publication.published_by.username }}.
+          </span>
+          Students can see their scores.
+        {% elif not window_closed %}
+          The exam is still open. Results can be published after {{ exam.end_time }}.
+        {% else %}
+          Not published. Students cannot see their scores yet.
+        {% endif %}
+      </p>
+    </div>
+
+    {% if not publication and window_closed %}
+      <form method="post" action="{% url 'results:publish' exam.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary text-xs font-semibold shadow-xs whitespace-nowrap">Publish results</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <!-- Student Scores Table -->
+  <div class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-bold text-slate-900">Enrolled Student Performance Breakdown</h2>
+      <span class="text-xs text-slate-400 font-mono">{{ rows|length }} enrolled</span>
+    </div>
+
+    <div class="table-container shadow-xs">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Student ID</th>
+            <th scope="col">Full Name</th>
+            <th scope="col">Attempt Status</th>
+            <th scope="col">Score</th>
+            <th scope="col">Percentage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td class="font-mono text-xs font-bold text-slate-800">
+                {{ row.student.username }}
+              </td>
+              <td class="font-medium text-slate-900">
+                {{ row.student.get_full_name }}
+              </td>
+              <td>
+                {% if row.attempt %}
+                  {% if row.attempt.status == 'submitted' %}
+                    <span class="badge badge-success">Submitted</span>
+                  {% elif row.attempt.status == 'timed_out' %}
+                    <span class="badge badge-error">Timed Out</span>
+                  {% else %}
+                    <span class="badge badge-warning">{{ row.attempt.get_status_display }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="badge badge-neutral">Not attempted</span>
+                {% endif %}
+              </td>
+              <td class="font-mono text-xs font-semibold text-slate-800">
+                {% if row.result %}
+                  {{ row.result.score }} / {{ row.result.total_marks }}
+                {% else %}
+                  &ndash;
+                {% endif %}
+              </td>
+              <td class="text-xs font-bold">
+                {% if row.result %}
+                  <span class="{% if row.result.percentage >= 50 %}text-emerald-600{% else %}text-rose-600{% endif %}">
+                    {{ row.result.percentage }}%
+                  </span>
+                {% else %}
+                  &ndash;
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5" class="p-8 text-center text-slate-500 text-xs">
+                No students are currently enrolled in this course.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
 {% endblock %}

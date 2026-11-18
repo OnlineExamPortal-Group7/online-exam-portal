@@ -1,42 +1,75 @@
-
 {% extends "base.html" %}
 
-{% block title %}Result Details{% endblock %}
+{% block title %}Result: {{ result.attempt.exam.title }} - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Results{% endblock %}
+{% block breadcrumb_current %}{{ result.attempt.exam.title }}{% endblock %}
 
 {% block content %}
-<h2>Examination Result Details</h2>
+<div class="max-w-2xl mx-auto space-y-6">
 
-<h3>{{ result.attempt.exam.title }}</h3>
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <span class="px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+        {{ result.attempt.exam.course.code }}
+      </span>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900 mt-2">
+        {{ result.attempt.exam.title }}
+      </h1>
+      <p class="text-xs text-slate-500 mt-1">{{ result.attempt.exam.course.name }}</p>
+    </div>
 
-<p><strong>Course:</strong> {{ result.attempt.exam.course.name }}</p>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'results:student_results' %}" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>My Results</span>
+      </a>
+    </div>
+  </div>
 
-<p><strong>Exam End Date:</strong>
-    {{ result.attempt.exam.end_time|date:"d M Y, h:i A" }}
-</p>
+  <!-- Score Summary Hero Card -->
+  <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4">
 
-<hr>
+    <div class="w-16 h-16 rounded-full mx-auto flex items-center justify-center {% if result.percentage >= 50 %}bg-emerald-50 text-emerald-600{% else %}bg-rose-50 text-rose-600{% endif %}">
+      <i data-lucide="{% if result.percentage >= 50 %}award{% else %}alert-circle{% endif %}" class="w-8 h-8"></i>
+    </div>
 
-<h3>Your Performance</h3>
+    <div>
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Marks Obtained</span>
+      <div class="text-4xl font-extrabold text-slate-900 mt-1">
+        {{ result.score }} / {{ result.total_marks }}
+      </div>
+      <div class="mt-2">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold {% if result.percentage >= 50 %}bg-emerald-50 text-emerald-800 border border-emerald-200{% else %}bg-rose-50 text-rose-800 border border-rose-200{% endif %}">
+          {{ result.percentage }}% Overall Score
+        </span>
+      </div>
+    </div>
 
-<p><strong>Marks Obtained:</strong>
-    {{ result.score }} / {{ result.total_marks }}
-</p>
+    <div class="pt-6 border-t border-slate-100 grid grid-cols-2 gap-4 text-xs text-left">
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+        <span class="block text-slate-400 text-[10px] uppercase font-semibold">Attempt Status</span>
+        <span class="font-bold text-slate-800">{{ result.attempt.get_status_display }}</span>
+      </div>
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+        <span class="block text-slate-400 text-[10px] uppercase font-semibold">Evaluated At</span>
+        <span class="font-bold text-slate-800">{{ result.evaluated_at|date:"d M Y, h:i A" }}</span>
+      </div>
+    </div>
 
-<p><strong>Percentage:</strong> {{ result.percentage }}%</p>
+  </div>
 
-<p><strong>Evaluated At:</strong>
-    {{ result.evaluated_at|date:"d M Y, h:i A" }}
-</p>
+  <!-- Navigation Links Footer -->
+  <div class="flex items-center justify-between text-xs font-semibold pt-2">
+    <a href="{% url 'results:student_results' %}" class="text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Back to My Results</span>
+    </a>
+    <a href="{% url 'results:student_history' %}" class="text-slate-600 hover:text-slate-900 inline-flex items-center gap-1">
+      <span>Examination History</span>
+      <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+    </a>
+  </div>
 
-<p><strong>Attempt Status:</strong>
-    {{ result.attempt.get_status_display }}
-</p>
-
-<hr>
-
-<p>
-    <a href="{% url 'results:student_results' %}">Back to My Results</a>
-    |
-    <a href="{% url 'results:student_history' %}">Examination History</a>
-</p>
+</div>
 {% endblock %}

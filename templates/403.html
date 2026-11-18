@@ -1,6 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Access denied{% endblock %}
+
+{% block title %}403 Forbidden - Access Denied{% endblock %}
+
 {% block content %}
-<h2>Access denied</h2>
-<p>You do not have permission to view this page.</p>
+<div class="min-h-[60vh] flex flex-col items-center justify-center text-center p-6">
+  <div class="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-6 border border-rose-100 shadow-xs">
+    <i data-lucide="shield-alert" class="w-8 h-8"></i>
+  </div>
+
+  <span class="text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-3 py-1 rounded-full border border-rose-200 mb-3">
+    HTTP 403 &bull; Permission Denied
+  </span>
+
+  <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Access restricted</h2>
+  <p class="mt-2 text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+    You do not possess the necessary role credentials or administrative permissions to access this specific module.
+  </p>
+
+  <div class="mt-8 flex items-center gap-3">
+    <a href="{% url 'accounts:dashboard' %}" class="btn btn-primary">
+      <i data-lucide="arrow-left" class="w-4 h-4"></i>
+      <span>Return to Dashboard</span>
+    </a>
+  </div>
+</div>
 {% endblock %}

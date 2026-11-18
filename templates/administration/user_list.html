@@ -1,47 +1,152 @@
 {% extends "base.html" %}
-{% block title %}Manage users{% endblock %}
+
+{% block title %}User Management - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Administration{% endblock %}
+{% block breadcrumb_current %}Users{% endblock %}
+
 {% block content %}
-<h2>Manage users</h2>
-{% for message in messages %}<p class="{{ message.tags }}">{{ message }}</p>{% endfor %}
-<p><a href="{% url 'administration:user_create' %}">Create user</a></p>
-<table>
-  <thead>
-    <tr><th>Username</th><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr>
-  </thead>
-  <tbody>
-    {% for account in users %}
-    <tr>
-      <td>{{ account.username }}</td>
-      <td>{{ account.email }}</td>
-      <td>{{ account.get_full_name }}</td>
-      <td>{{ account.get_role_display }}</td>
-      <td>{{ account.is_active|yesno:"Active,Deactivated" }}</td>
-      <td>
-        <form method="post" action="{% url 'administration:user_role' account.pk %}">
-          {% csrf_token %}
-          <select name="role" aria-label="Role for {{ account.username }}">
-            {% for value, label in roles %}
-            <option value="{{ value }}"{% if value == account.role %} selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-          <button type="submit">Change role</button>
-        </form>
-        {% if account.is_active %}
-        <form method="post" action="{% url 'administration:user_deactivate' account.pk %}">
-          {% csrf_token %}
-          <button type="submit">Deactivate</button>
-        </form>
-        {% else %}
-        <form method="post" action="{% url 'administration:user_reactivate' account.pk %}">
-          {% csrf_token %}
-          <button type="submit">Reactivate</button>
-        </form>
-        {% endif %}
-      </td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="6">No users yet.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="space-y-6">
+
+  <!-- Header Section with Action Button -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">User Management</h1>
+      <p class="mt-1 text-xs text-slate-500">
+        Review institutional accounts, manage role assignments, and control platform access permissions.
+      </p>
+    </div>
+    <a href="{% url 'administration:user_create' %}" class="btn btn-primary shadow-xs">
+      <i data-lucide="user-plus" class="w-4 h-4"></i>
+      <span>Create New User</span>
+    </a>
+  </div>
+
+  <!-- Search / Quick Filter Bar -->
+  <div class="p-4 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-4">
+    <div class="relative flex-1 max-w-sm">
+      <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+        <i data-lucide="search" class="w-4 h-4"></i>
+      </div>
+      <input
+        type="text"
+        id="user-search-input"
+        placeholder="Filter by name, username or email..."
+        onkeyup="filterUsersTable()"
+        class="block w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10">
+    </div>
+    <div class="text-xs text-slate-500">
+      Total Accounts: <span class="font-bold text-slate-800">{{ users|length }}</span>
+    </div>
+  </div>
+
+  <!-- Users Table Container -->
+  <div class="table-container shadow-xs">
+    <table id="users-table">
+      <thead>
+        <tr>
+          <th>User / Name</th>
+          <th>Institutional Email</th>
+          <th>Assigned Role</th>
+          <th>Account Status</th>
+          <th class="text-right">Manage Role &amp; Access</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for account in users %}
+          <tr class="user-row">
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-semibold text-xs text-slate-700">
+                  {{ account.username|slice:":2"|upper }}
+                </div>
+                <div>
+                  <span class="block font-semibold text-slate-900 text-sm">{{ account.get_full_name|default:account.username }}</span>
+                  <span class="block text-xs text-slate-500 font-mono">{{ account.username }}</span>
+                </div>
+              </div>
+            </td>
+            <td class="text-xs font-mono text-slate-600">
+              {{ account.email }}
+            </td>
+            <td>
+              {% if account.role == "administrator" %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                  <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span> Admin
+                </span>
+              {% elif account.role == "instructor" %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Faculty
+                </span>
+              {% else %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Student
+                </span>
+              {% endif %}
+            </td>
+            <td>
+              {% if account.is_active %}
+                <span class="badge badge-success">Active</span>
+              {% else %}
+                <span class="badge badge-error">Deactivated</span>
+              {% endif %}
+            </td>
+            <td class="text-right">
+              <div class="inline-flex items-center gap-2 justify-end">
+
+                <!-- Role Change Form -->
+                <form method="post" action="{% url 'administration:user_role' account.pk %}" class="inline-flex items-center gap-1.5">
+                  {% csrf_token %}
+                  <select name="role" aria-label="Role for {{ account.username }}" class="text-xs py-1 px-2 rounded-md border border-slate-300 bg-white text-slate-800 focus:outline-none focus:border-indigo-600">
+                    {% for value, label in roles %}
+                      <option value="{{ value }}"{% if value == account.role %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-secondary btn-sm text-[11px] py-1 px-2">
+                    Update
+                  </button>
+                </form>
+
+                <!-- Deactivate / Reactivate Form -->
+                {% if account.is_active %}
+                  <form method="post" action="{% url 'administration:user_deactivate' account.pk %}" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors" title="Deactivate account">
+                      <i data-lucide="user-x" class="w-4 h-4"></i>
+                    </button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{% url 'administration:user_reactivate' account.pk %}" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="p-1 text-slate-400 hover:text-emerald-600 rounded-md hover:bg-emerald-50 transition-colors" title="Reactivate account">
+                      <i data-lucide="user-check" class="w-4 h-4"></i>
+                    </button>
+                  </form>
+                {% endif %}
+
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="p-8 text-center text-slate-500">
+              No registered user accounts found.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  function filterUsersTable() {
+    const input = document.getElementById("user-search-input").value.toLowerCase();
+    const rows = document.querySelectorAll(".user-row");
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(input) ? "" : "none";
+    });
+  }
+</script>
 {% endblock %}

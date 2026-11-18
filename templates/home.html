@@ -1,4 +1,141 @@
 {% extends "base.html" %}
+
+{% block title %}Online Exam Portal — Academic Assessment Platform{% endblock %}
+
+{% block root_layout %}
+<div class="min-h-screen bg-slate-50 flex flex-col font-sans">
+
+  <!-- Top Institutional Bar -->
+  <header class="py-4 px-6 sm:px-8 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-xs">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shadow-indigo-600/20">
+          <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <span class="font-bold text-slate-900 text-base tracking-tight block leading-tight">Online Exam Portal</span>
+          <span class="text-xs text-slate-500 font-medium">Enterprise Academic Platform</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-sm font-semibold shadow-xs">
+          <span>Sign In to Portal</span>
+          <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="flex-1 flex flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+    <div class="max-w-5xl w-full text-center space-y-10">
+
+      <div class="space-y-4 max-w-3xl mx-auto">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold shadow-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Standardized University Examination System</span>
+        </div>
+
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-tight">
+          Secure, distraction-free online examinations.
+        </h1>
+
+        <p class="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          Welcome to the Online Exam Portal. Please <a href="{% url 'accounts:login' %}" class="text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2">log in</a> with your institutional credentials to access your scheduled assessments, courses, or administration dashboard.
+        </p>
+
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+          <a href="{% url 'accounts:login' %}" class="btn btn-primary px-8 py-3.5 text-base font-semibold w-full sm:w-auto shadow-md hover:shadow-lg transition-all hover:scale-[1.02]">
+            <span>Sign In to Your Account</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature Highlights Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 text-left">
+        <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition-colors">
+          <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
+            <i data-lucide="clock" class="w-5 h-5"></i>
+          </div>
+          <h2 class="text-base font-bold text-slate-900 mb-1.5">Server-Authoritative Timers</h2>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Strict start and end windows with server-synchronized countdowns and automated timeout submissions. Refreshing the browser never resets test duration.
+          </p>
+        </div>
+
+        <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition-colors">
+          <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4">
+            <i data-lucide="save" class="w-5 h-5"></i>
+          </div>
+          <h2 class="text-base font-bold text-slate-900 mb-1.5">Resilient Autosave</h2>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Automatic question response persistence with monotonic sequencing and exponential backoff retry to safeguard every student answer.
+          </p>
+        </div>
+
+        <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition-colors">
+          <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
+            <i data-lucide="activity" class="w-5 h-5"></i>
+          </div>
+          <h2 class="text-base font-bold text-slate-900 mb-1.5">Live Proctor Monitoring</h2>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Real-time assessment console displaying in-progress, submitted, and timed-out candidate states with 10-second polling and fallback support.
+          </p>
+        </div>
+      </div>
+
+      <!-- Examination Workflow Overview -->
+      <div class="p-8 rounded-2xl bg-slate-900 text-white text-left shadow-lg border border-slate-800">
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
+          <div>
+            <span class="text-xs font-mono font-semibold text-indigo-400 uppercase tracking-wider block">End-to-End Evaluation Workflow</span>
+            <h3 class="text-xl font-bold text-white mt-1">Built for institutional reliability</h3>
+          </div>
+          <a href="{% url 'accounts:login' %}" class="btn btn-secondary btn-sm text-slate-200 bg-slate-800 hover:bg-slate-700 border-slate-700">
+            <span>Access Portal</span>
+            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+          </a>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-6">
+          <div class="space-y-1.5">
+            <div class="text-xs font-mono font-bold text-indigo-400">01. Author &amp; Import</div>
+            <p class="text-xs text-slate-300">Question bank management with CSV bulk ingestion and multi-choice authoring.</p>
+          </div>
+          <div class="space-y-1.5">
+            <div class="text-xs font-mono font-bold text-indigo-400">02. Schedule &amp; Enrol</div>
+            <p class="text-xs text-slate-300">Course-based student rosters with enforced attempt availability windows.</p>
+          </div>
+          <div class="space-y-1.5">
+            <div class="text-xs font-mono font-bold text-indigo-400">03. Monitored Execution</div>
+            <p class="text-xs text-slate-300">Distraction-free console with question palette and live proctor oversight.</p>
+          </div>
+          <div class="space-y-1.5">
+            <div class="text-xs font-mono font-bold text-indigo-400">04. Review &amp; Publish</div>
+            <p class="text-xs text-slate-300">Instructor publication gating with analytics and historical student transcripts.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Responsive Footer -->
+  <footer class="py-6 px-6 border-t border-slate-200 text-center text-xs text-slate-500 bg-white">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <span>Online Exam Portal &bull; Django 5.2.x Enterprise Assessment Engine</span>
+      <div class="flex items-center gap-4 text-xs text-slate-500">
+        <span>Role-Based Access</span>
+        <span>&bull;</span>
+        <span>Single-Session Security</span>
+        <span>&bull;</span>
+        <span>Publication Gating</span>
+      </div>
+    </div>
+  </footer>
+</div>
+{% endblock root_layout %}
+
 {% block content %}
 <p>Welcome to the Online Exam Portal. Please <a href="{% url 'accounts:login' %}">log in</a>.</p>
-{% endblock %}
+{% endblock content %}

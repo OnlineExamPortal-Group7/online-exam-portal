@@ -1,32 +1,61 @@
 {% extends "base.html" %}
 
+{% block title %}Create Examination - Online Exam Portal{% endblock %}
+{% block breadcrumb_root %}Examinations{% endblock %}
+{% block breadcrumb_current %}Create Exam{% endblock %}
+
 {% block content %}
-<div class="container">
-    <h1>Create Exam</h1>
+<div class="max-w-3xl mx-auto space-y-6">
 
-    {% if messages %}
-        {% for message in messages %}
-            <p>{{ message }}</p>
-        {% endfor %}
-    {% endif %}
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-slate-900">Create Examination</h1>
+      <p class="mt-1 text-xs text-slate-500">Schedule a new time-bounded exam, define evaluation window, and select questions.</p>
+    </div>
+    <a href="{% url 'accounts:dashboard' %}" class="btn btn-secondary btn-sm">
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Dashboard</span>
+    </a>
+  </div>
 
-    <form method="post">
-        {% csrf_token %}
+  <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs">
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
 
-        {{ form.non_field_errors }}
+      {% if form.non_field_errors %}
+        <div class="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold mb-4">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
 
-        {% for field in form %}
-            <div class="form-field">
-                {{ field.label_tag }}
-                {{ field }}
-                {% if field.help_text %}
-                    <small>{{ field.help_text }}</small>
-                {% endif %}
-                {{ field.errors }}
-            </div>
-        {% endfor %}
+      {% for field in form %}
+        <div class="space-y-1.5">
+          <label for="{{ field.id_for_label }}" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+            {{ field.label }}
+          </label>
+          {{ field }}
+          {% if field.help_text %}
+            <p class="text-[11px] text-slate-400">{{ field.help_text }}</p>
+          {% endif %}
+          {% if field.errors %}
+            <p class="text-xs text-rose-600 font-medium">{{ field.errors.0 }}</p>
+          {% endif %}
+        </div>
+      {% endfor %}
 
-        <button type="submit">Create Exam</button>
+      <div class="pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
+        <a href="{% url 'accounts:dashboard' %}" class="btn btn-secondary text-xs">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-primary text-xs font-semibold">
+          <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+          <span>Schedule Examination</span>
+        </button>
+      </div>
+
     </form>
+  </div>
+
 </div>
 {% endblock %}
